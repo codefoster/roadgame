@@ -151,6 +151,7 @@ class MainScreen(Screen):
         ((0, 1, 0, 1), "Nature: -10 lks, -25 pts"),
         ((1, 1, 1, 1), "Man-made: -25 lks, -10 pts"),
         ((0, 0, 1, 1), "Next 10 lks: switch cat."),
+        ((1, 1, 0, 1), "Power-up stolen!"),
     ]
 
     def _update_flash_rect(self, *args):
@@ -185,6 +186,9 @@ class MainScreen(Screen):
                     self.btn_a.disabled = self.score_b < 1
             elif text == "Next 10 lks: switch cat.":
                 self._forced_c_remaining = 10
+            elif text == "Power-up stolen!":
+                if self.dropdown_d.values:
+                    self.dropdown_d.values = self.dropdown_d.values[1:]
             return
         self._flash_color.rgba = color
         self.flash_label.text = text
