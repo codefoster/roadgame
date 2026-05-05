@@ -261,7 +261,7 @@ class MainScreen(Screen):
             sub = "e"
             self._force_sub_e = False
         else:
-            sub = random.choice("abcde")
+            sub = random.choice("e")
         key = f"{tier}{sub}"
         name = self._OPTION_NAMES.get(key, f"Option {key}")
         if self._run_option is not None:
@@ -300,6 +300,8 @@ class MainScreen(Screen):
         self._commit_b()
         if self._clock_event:
             self._end_run()
+            self._linear_mode = False
+            self._linear_press_count = 0
             self._clock_event.cancel()
             self._clock_event = Clock.schedule_interval(self._add_b_point, 1)
 
@@ -427,6 +429,26 @@ class MainScreen(Screen):
             self._end_hold()
             self.btn_b.background_color = (1, 1, 1, 255)
 
+    def _apply_a_score(self):
+        if self._next_a_multiply:
+            self._next_a_multiply = False
+            self.score_a += self.score_b
+            self.label_a.text = f"Sightings: {self.score_a}"
+            self.score_b = 0
+            self.label_b.text = "Credits: 0"
+            self.btn_a.disabled = True
+            return
+        if self._grass_mode and self.grass_switch.active:
+            self.score_a += 3
+        elif self._double_points or self._hold_double_points:
+            self.score_a += 2
+        else:
+            self.score_a += 1
+        self.label_a.text = f"Sightings: {self.score_a}"
+        self.score_b = max(0, self.score_b - 1)
+        self.label_b.text = f"Credits: {self.score_b}"
+        self.btn_a.disabled = self.score_b < 1
+
     def _press_a(self, instance):
         # A "spends" one banked Look to award one Point (two while 1b is active).
         if self._forced_c_remaining > 0:
@@ -439,28 +461,7 @@ class MainScreen(Screen):
             self.label_b.text = f"Credits: {self.score_b} (+{self._pending_b})"
         else:
             self._reset_b_timer()
-        if self._next_a_multiply:
-            self._next_a_multiply = False
-            self.score_a += self.score_b
-            self.label_a.text = f"Sightings: {self.score_a}"
-            self.score_b = 0
-            self.label_b.text = "Credits: 0"
-            self.btn_a.disabled = True
-            return
-        if self._linear_mode:
-            self._linear_press_count += 1
-            n = self._linear_press_count
-            self.score_a += n * (n + 1) // 2
-        elif self._grass_mode and self.grass_switch.active:
-            self.score_a += 3
-        elif self._double_points or self._hold_double_points:
-            self.score_a += 2
-        else:
-            self.score_a += 1
-        self.label_a.text = f"Sightings: {self.score_a}"
-        self.score_b = max(0, self.score_b - 1)
-        self.label_b.text = f"Credits: {self.score_b}"
-        self.btn_a.disabled = self.score_b < 1
+        self._apply_a_score()
 
     def _b_press(self, instance):
         # In toggle mode, the press alternates start/stop. In hold mode, the press just
@@ -490,27 +491,30 @@ class MainScreen(Screen):
             self._end_hold()
 
     def _press_c(self, instance):
-        # C is a penalty button: it discards any in-progress B run and burns 20 Points,
-        # clamped at zero so the score can't go negative.
+        # C always acts as A (awards a point, spends a look), plus its own effect.
         if self._flash_c_window:
             self._flash_c_window = False
             if self._flash_c_event:
                 self._flash_c_event.cancel()
                 self._flash_c_event = None
             self._toggle_category()
+            self._apply_a_score()
             return
         if self._forced_c_remaining > 0:
             self._forced_c_remaining -= 1
             self._toggle_category()
+            self._apply_a_score()
             return
         if self._next_c_free:
             self._next_c_free = False
+            self._apply_a_score()
             return
         if self._next_c_flip:
             self._next_c_flip = False
             self.score_a += 20
             self.label_a.text = f"Sightings: {self.score_a}"
             self._toggle_category()
+            self._apply_a_score()
             return
         if self._next_ac_keep_b:
             self._next_ac_keep_b = False
@@ -522,8 +526,14 @@ class MainScreen(Screen):
             self.score_a = 0
             self.label_a.text = f"Sightings: {self.score_a}"
         self._toggle_category()
+        self._apply_a_score()
 
     def _add_b_point(self, dt):
+        if self._linear_mode:
+            self._linear_press_count += 1
+            self.score_a += self._linear_press_count
+            self.label_a.text = f"Sightings: {self.score_a}"
+            return
         # Clock callback: adds one Look per tick to the pending buffer.
         self._pending_b += 1
         self._update_d_options()
