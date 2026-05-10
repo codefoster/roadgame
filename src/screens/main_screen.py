@@ -42,7 +42,7 @@ class MainScreen(Screen):
         self._grass_mode = False          # True while 2d is active; A gives 3x if grass switch is on
         self._next_powerup_level_up = False   # True after 2e; next power-up earned is one tier higher
         self._level_up_used_this_run = False   # True once 2e boost is applied in the current run
-        self._next_hold_linear = False         # True after 3a; next hold gives triangular point awards
+        self._next_hold_linear = False         # True after 3e; next hold gives triangular point awards
         self._linear_mode = False              # True during a 3a-enhanced hold
         self._linear_press_count = 0           # A-press counter for triangular sequence
         self._next_a_multiply = False          # True after 3d; next A awards looks-count points and clears looks
@@ -51,6 +51,8 @@ class MainScreen(Screen):
         self._flash_c_event = None             # scheduled penalty if C isn't pressed in time
         self._category = "Nature"              # current category; toggled by every real C press
         self._forced_c_remaining = 0           # A presses still requiring a C swap; each wrong A costs 5 pts
+        self._powerup_expiry_events = {}       # {name: Clock event} for timed power-up expiry
+        self._decay_event = None               # set after layout; ticks credit decay every 10 s
 
         with self.canvas.before:
             self._flash_color = Color(0, 0, 0, 0)
@@ -128,6 +130,8 @@ class MainScreen(Screen):
         )
         self.add_widget(self.flash_label)
 
+        self._decay_event = Clock.schedule_interval(self._tick_decay, 10)
+
     _OPTION_NAMES = {
         "1a": "(L1)5 sec ∞ looks",
         "1b": "(L1)5 sec 2x pnts.",
@@ -142,27 +146,113 @@ class MainScreen(Screen):
         "3a": "(L3)Flip next C to +20",
         "3b": "(L3)2× pending now",
         "3c": "(L3)Roll again",
-        "3d": "(L3)Next A = looks × pnts.",
+        "3d": "(L3)Next A = looks × pnts.", #Should make this xpoints under 50
         "3e": "(L3)Next hold linear pnts.",
     }
 
-    _FLASH_OPTIONS = [
-        ((1, 0, 0, 1), "Switch!"),
-        ((0, 1, 0, 1), "Nature: -10 lks, -25 pts"),
-        ((1, 1, 1, 1), "Man-made: -25 lks, -10 pts"),
-        ((0, 0, 1, 1), "Next 10 lks: switch cat."),
-        ((1, 1, 0, 1), "Power-up stolen!"),
+    # (min_score, tick_interval_seconds) — checked highest-first.
+    _DIFFICULTY_STEPS = [
+        (1000, 4.0),
+        (800,  3.0),
+        (500,  2.0),
+        (200,  1.5),
+        (0,    1.0),
     ]
+
+    def _b_interval(self):
+        for threshold, interval in self._DIFFICULTY_STEPS:
+            if self.score_a >= threshold:
+                return interval
+        return 1.0
+
+    def _c_penalty(self):
+        if self.score_a >= 1000:
+            return 50
+        elif self.score_a >= 800:
+            return 40
+        elif self.score_a >= 500:
+            return 30
+        return 20
+
+    def _flash_penalties(self):
+        """Returns (nature_lks, nature_pts, manmade_lks, manmade_pts) for the current score tier."""
+        if self.score_a >= 1000:
+            return 30, 40, 40, 30
+        elif self.score_a >= 800:
+            return 25, 40, 40, 25
+        elif self.score_a >= 500:
+            return 15, 30, 30, 15
+        return 10, 25, 25, 10
+
+    def _tick_decay(self, dt):
+        if self.score_a >= 1000:
+            if self.score_b <= 45:
+                return
+            amount = 2
+        elif self.score_a >= 800:
+            if self.score_b <= 100:
+                return
+            amount = 2
+        elif self.score_a >= 500:
+            if self.score_b <= 150:
+                return
+            amount = 1
+        else:
+            return
+        self.score_b = max(0, self.score_b - amount)
+        if self._pending_b:
+            self.label_b.text = f"Credits: {self.score_b} (+{self._pending_b})"
+        else:
+            self.label_b.text = f"Credits: {self.score_b}"
+        self.btn_a.disabled = self.score_b < 1
+
+    def _powerup_expiry_time(self):
+        if self.score_a >= 1000:
+            return 180
+        elif self.score_a >= 800:
+            return 300
+        return None
+
+    def _schedule_powerup_expiry(self, name):
+        expiry = self._powerup_expiry_time()
+        if expiry is None:
+            return
+        event = Clock.schedule_once(lambda dt, n=name: self._expire_powerup(n), expiry)
+        self._powerup_expiry_events[name] = event
+
+    def _cancel_powerup_expiry(self, name):
+        event = self._powerup_expiry_events.pop(name, None)
+        if event:
+            event.cancel()
+
+    def _expire_powerup(self, name):
+        self._powerup_expiry_events.pop(name, None)
+        values = list(self.dropdown_d.values)
+        if name in values:
+            values.remove(name)
+            self.dropdown_d.values = tuple(values)
 
     def _update_flash_rect(self, *args):
         self._flash_rect.pos = self.pos
         self._flash_rect.size = self.size
 
     def _schedule_next_flash(self):
-        Clock.schedule_once(self._do_flash, random.uniform(30, 90))
+        if self.score_a >= 800:
+            Clock.schedule_once(self._do_flash, random.uniform(15, 45))
+        else:
+            Clock.schedule_once(self._do_flash, random.uniform(30, 90))
 
     def _do_flash(self, dt):
-        color, text = random.choice(self._FLASH_OPTIONS)
+        nlks, npts, mlks, mpts = self._flash_penalties()
+        options = [
+            ((1, 0, 0, 1), "Switch!"),
+            ((0, 1, 0, 1), f"Nature: -{nlks} lks, -{npts} pts"),
+            ((1, 1, 1, 1), f"Man-made: -{mlks} lks, -{mpts} pts"),
+            ((0, 0, 1, 1), "Next 10 lks: switch cat."),
+            ((1, 1, 0, 1), "Power-up stolen!"),
+        ]
+        weights = [1, 1, 1, 1, 2] if self.score_a >= 800 else [1, 1, 1, 1, 1]
+        color, text = random.choices(options, weights=weights)[0]
         self._run_flash(color, text, flashes_remaining=3)
 
     def _run_flash(self, color, text, flashes_remaining):
@@ -170,17 +260,19 @@ class MainScreen(Screen):
             self._schedule_next_flash()
             if text == "Switch!":
                 self._start_flash_c_window()
-            elif text == "Nature: -10 lks, -25 pts":
+            elif text.startswith("Nature: -"):
                 if self._category == "Nature":
-                    self.score_b = max(0, self.score_b - 10)
-                    self.score_a = max(0, self.score_a - 25)
+                    nlks, npts, _, _ = self._flash_penalties()
+                    self.score_b = max(0, self.score_b - nlks)
+                    self.score_a = max(0, self.score_a - npts)
                     self.label_b.text = f"Credits: {self.score_b}"
                     self.label_a.text = f"Sightings: {self.score_a}"
                     self.btn_a.disabled = self.score_b < 1
-            elif text == "Man-made: -25 lks, -10 pts":
+            elif text.startswith("Man-made: -"):
                 if self._category == "Man-made":
-                    self.score_b = max(0, self.score_b - 25)
-                    self.score_a = max(0, self.score_a - 10)
+                    _, _, mlks, mpts = self._flash_penalties()
+                    self.score_b = max(0, self.score_b - mlks)
+                    self.score_a = max(0, self.score_a - mpts)
                     self.label_b.text = f"Credits: {self.score_b}"
                     self.label_a.text = f"Sightings: {self.score_a}"
                     self.btn_a.disabled = self.score_b < 1
@@ -188,6 +280,8 @@ class MainScreen(Screen):
                 self._forced_c_remaining = 10
             elif text == "Power-up stolen!":
                 if self.dropdown_d.values:
+                    stolen = self.dropdown_d.values[0]
+                    self._cancel_powerup_expiry(stolen)
                     self.dropdown_d.values = self.dropdown_d.values[1:]
             return
         self._flash_color.rgba = color
@@ -261,20 +355,23 @@ class MainScreen(Screen):
             sub = "e"
             self._force_sub_e = False
         else:
-            sub = random.choice("e")
+            sub = random.choice("abcde")
         key = f"{tier}{sub}"
         name = self._OPTION_NAMES.get(key, f"Option {key}")
         if self._run_option is not None:
             # Upgrade: swap the previous run option for the better one.
+            self._cancel_powerup_expiry(self._run_option)
             self.dropdown_d.values = tuple(
                 name if v == self._run_option else v
                 for v in self.dropdown_d.values
             )
+            self._schedule_powerup_expiry(name)
         else:
             # First option this run — append and lock until run ends.
             self.dropdown_d.values = tuple(self.dropdown_d.values) + (name,)
             if self._clock_event:
                 self.dropdown_d.disabled = True
+            self._schedule_powerup_expiry(name)
         self._run_option = name
 
     def _end_run(self):
@@ -302,8 +399,11 @@ class MainScreen(Screen):
             self._end_run()
             self._linear_mode = False
             self._linear_press_count = 0
+            if self._next_hold_linear:
+                self._linear_mode = True
+                self._next_hold_linear = False
             self._clock_event.cancel()
-            self._clock_event = Clock.schedule_interval(self._add_b_point, 1)
+            self._clock_event = Clock.schedule_interval(self._add_b_point, self._b_interval())
 
     def _on_d_select(self, instance, value):
         # Spinner sets text to the picked option; snap it back to "Power-ups" so the label
@@ -314,6 +414,7 @@ class MainScreen(Screen):
         values.remove(value)
         self.dropdown_d.values = tuple(values)
         self.dropdown_d.text = "Power-ups"
+        self._cancel_powerup_expiry(value)
         self._activate_powerup(value)
 
     def _reroll_top_powerup(self):
@@ -340,8 +441,11 @@ class MainScreen(Screen):
         ]
         if not candidates:
             return
-        values[target_idx] = random.choice(candidates)
+        new_name = random.choice(candidates)
+        self._cancel_powerup_expiry(target_name)
+        values[target_idx] = new_name
         self.dropdown_d.values = tuple(values)
+        self._schedule_powerup_expiry(new_name)
 
     def _activate_powerup(self, name):
         if name == self._OPTION_NAMES.get("1a"):
@@ -475,12 +579,12 @@ class MainScreen(Screen):
             else:
                 self._end_run()
                 self._activate_hold_powerups()
-                self._clock_event = Clock.schedule_interval(self._add_b_point, 1)
+                self._clock_event = Clock.schedule_interval(self._add_b_point, self._b_interval())
                 self.btn_b.background_color = (0, 0, 4, 255)
         else:
             self._end_run()
             self._activate_hold_powerups()
-            self._clock_event = Clock.schedule_interval(self._add_b_point, 1)
+            self._clock_event = Clock.schedule_interval(self._add_b_point, self._b_interval())
 
     def _b_release(self, instance):
         # Hold-mode only: releasing B stops the timer and commits.
@@ -507,10 +611,13 @@ class MainScreen(Screen):
             return
         if self._next_c_free:
             self._next_c_free = False
+            self._reset_b_timer()
+            self._toggle_category()
             self._apply_a_score()
             return
         if self._next_c_flip:
             self._next_c_flip = False
+            self._reset_b_timer()
             self.score_a += 20
             self.label_a.text = f"Sightings: {self.score_a}"
             self._toggle_category()
@@ -520,7 +627,7 @@ class MainScreen(Screen):
             self._next_ac_keep_b = False
         else:
             self._reset_b_timer()
-        self.score_a -= 20
+        self.score_a -= self._c_penalty()
         self.label_a.text = f"Sightings: {self.score_a}"
         if self.score_a <= -1:
             self.score_a = 0
