@@ -22,8 +22,6 @@ class MainScreen(Screen):
         # Looks earned during the current B press are buffered here until commit,
         # so a single hold/toggle session can be reset or discarded as one unit.
         self._pending_b = 0
-        self._b_tick = 0  # tick counter used by D-mode's escalating bonus
-        self._d_mode = False
         self._clock_event = None  # active Clock interval while B is being held/toggled
         self._toggle_mode = False  # Switch state: tap-to-toggle vs press-and-hold for B
         self._run_tier = 0     # highest tier crossed in the current B run
@@ -53,6 +51,7 @@ class MainScreen(Screen):
         self._forced_c_remaining = 0           # A presses still requiring a C swap; each wrong A costs 5 pts
         self._powerup_expiry_events = {}       # {name: Clock event} for timed power-up expiry
         self._decay_event = None               # set after layout; ticks credit decay every 10 s
+        self._level_flash_busy = False         # prevents overlapping level-up flashes
 
         with self.canvas.before:
             self._flash_color = Color(0, 0, 0, 0)
@@ -78,7 +77,6 @@ class MainScreen(Screen):
 
         self.label_a = Label(text="Sightings: 0", font_size="48sp")
         self.label_b = Label(text="Credits: 0", font_size="48sp")
-        self.label_c = Label(text="Changes: 0", font_size="48sp")
         self.label_cat = Label(text="Category: Nature", font_size="24sp")
 
         # C button on left (above A), switch on right (above B)
@@ -232,6 +230,33 @@ class MainScreen(Screen):
             values.remove(name)
             self.dropdown_d.values = tuple(values)
 
+    _LEVEL_THRESHOLDS = (200, 500, 800, 1000)
+
+    def _check_level_thresholds(self, old_score):
+        for t in self._LEVEL_THRESHOLDS:
+            if old_score < t <= self.score_a:
+                self._do_level_up_flash()
+                break
+
+    def _do_level_up_flash(self):
+        if self._level_flash_busy:
+            return
+        self._level_flash_busy = True
+        self._run_level_flash(3)
+
+    def _run_level_flash(self, blinks):
+        if blinks == 0:
+            self._level_flash_busy = False
+            return
+        self._flash_color.rgba = (1, 1, 0, 1)
+        self.flash_label.text = "Level Up Difficulty"
+        Clock.schedule_once(lambda dt: self._level_flash_pause(blinks), 0.4)
+
+    def _level_flash_pause(self, blinks):
+        self._flash_color.rgba = (0, 0, 0, 0)
+        self.flash_label.text = ""
+        Clock.schedule_once(lambda dt: self._run_level_flash(blinks - 1), 0.2)
+
     def _update_flash_rect(self, *args):
         self._flash_rect.pos = self.pos
         self._flash_rect.size = self.size
@@ -249,7 +274,7 @@ class MainScreen(Screen):
             ((0, 1, 0, 1), f"Nature: -{nlks} lks, -{npts} pts"),
             ((1, 1, 1, 1), f"Man-made: -{mlks} lks, -{mpts} pts"),
             ((0, 0, 1, 1), "Next 10 lks: switch cat."),
-            ((1, 1, 0, 1), "Power-up stolen!"),
+            ((0.6, 0, 1, 1), "Power-up stolen!"),
         ]
         weights = [1, 1, 1, 1, 2] if self.score_a >= 800 else [1, 1, 1, 1, 1]
         color, text = random.choices(options, weights=weights)[0]
@@ -301,7 +326,7 @@ class MainScreen(Screen):
     def _flash_c_penalty(self, dt):
         self._flash_c_window = False
         self._flash_c_event = None
-        self.score_a = max(0, self.score_a - 20)
+        self.score_a = max(0, self.score_a - self._c_penalty())
         self.label_a.text = f"Sightings: {self.score_a}"
 
     def _flash_pause(self, color, text, flashes_remaining):
@@ -316,8 +341,6 @@ class MainScreen(Screen):
         # by _end_hold, not here, so mid-hold A presses don't lose those effects.
         self.score_b += self._pending_b
         self._pending_b = 0
-        self._b_tick = 0
-        self._d_mode = False
         self.dropdown_d.text = "Power-ups"
         self.dropdown_d.disabled = False
         self.label_b.text = f"Credits: {self.score_b}"
@@ -479,8 +502,6 @@ class MainScreen(Screen):
             self._next_a_multiply = True
         elif name == self._OPTION_NAMES.get("3e"):
             self._next_hold_linear = True
-        else:
-            self._d_mode = True
 
     def _start_double_points(self, duration_sec):
         if self._double_points_event:
@@ -536,12 +557,15 @@ class MainScreen(Screen):
     def _apply_a_score(self):
         if self._next_a_multiply:
             self._next_a_multiply = False
+            old = self.score_a
             self.score_a += self.score_b
             self.label_a.text = f"Sightings: {self.score_a}"
+            self._check_level_thresholds(old)
             self.score_b = 0
             self.label_b.text = "Credits: 0"
             self.btn_a.disabled = True
             return
+        old = self.score_a
         if self._grass_mode and self.grass_switch.active:
             self.score_a += 3
         elif self._double_points or self._hold_double_points:
@@ -549,6 +573,7 @@ class MainScreen(Screen):
         else:
             self.score_a += 1
         self.label_a.text = f"Sightings: {self.score_a}"
+        self._check_level_thresholds(old)
         self.score_b = max(0, self.score_b - 1)
         self.label_b.text = f"Credits: {self.score_b}"
         self.btn_a.disabled = self.score_b < 1
@@ -618,8 +643,10 @@ class MainScreen(Screen):
         if self._next_c_flip:
             self._next_c_flip = False
             self._reset_b_timer()
+            old = self.score_a
             self.score_a += 20
             self.label_a.text = f"Sightings: {self.score_a}"
+            self._check_level_thresholds(old)
             self._toggle_category()
             self._apply_a_score()
             return
@@ -638,8 +665,10 @@ class MainScreen(Screen):
     def _add_b_point(self, dt):
         if self._linear_mode:
             self._linear_press_count += 1
+            old = self.score_a
             self.score_a += self._linear_press_count
             self.label_a.text = f"Sightings: {self.score_a}"
+            self._check_level_thresholds(old)
             return
         # Clock callback: adds one Look per tick to the pending buffer.
         self._pending_b += 1
