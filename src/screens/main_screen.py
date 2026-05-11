@@ -2,6 +2,7 @@ import random
 
 from kivy.uix.screenmanager import Screen
 from kivy.uix.boxlayout import BoxLayout
+from kivy.uix.gridlayout import GridLayout
 from kivy.uix.label import Label
 from kivy.uix.button import Button
 from kivy.uix.switch import Switch
@@ -52,6 +53,19 @@ class MainScreen(Screen):
         self._powerup_expiry_events = {}       # {name: Clock event} for timed power-up expiry
         self._decay_event = None               # set after layout; ticks credit decay every 10 s
         self._level_flash_busy = False         # prevents overlapping level-up flashes
+        self._challenge = None                 # active challenge dict or None
+        self._best_hold = 0                    # longest single natural-hold credit count this session
+        self._patience_event = None            # fires +5 pts after 30s without spotting
+        self._levelup_reprieve_window = False  # True during 5s pay-to-delay window
+        self._levelup_reprieve_threshold = None
+        self._levelup_reprieve_event = None
+        self._levelup_reprieved = set()        # thresholds already offered a reprieve (no second chance)
+        self._condition = 'sunny'
+        self._rainy_a_counter = 0
+        self._bingo_card = []
+        self._bingo_marked = [False] * 9
+        self._bingo_buttons = []
+        self._bingo_visible = False
 
         with self.canvas.before:
             self._flash_color = Color(0, 0, 0, 0)
@@ -61,7 +75,22 @@ class MainScreen(Screen):
 
         layout = BoxLayout(orientation="vertical", padding=40, spacing=20)
 
-        # Top row: empty spacer on the left, D-mode dropdown pinned to the right.
+        # Control row: condition selector, bingo toggle.
+        control_row = BoxLayout(size_hint=(1, None), height=44, spacing=6)
+        self.spinner_condition = Spinner(
+            text="Sunny",
+            values=("Sunny", "Rainy", "Foggy", "Night"),
+            font_size="15sp",
+            size_hint_x=0.4,
+        )
+        self.spinner_condition.bind(text=self._on_condition_select)
+        control_row.add_widget(self.spinner_condition)
+        self.btn_bingo = Button(text="Bingo", font_size="15sp")
+        self.btn_bingo.bind(on_press=lambda x: self._toggle_bingo())
+        control_row.add_widget(self.btn_bingo)
+        layout.add_widget(control_row)
+
+        # Power-ups dropdown row.
         top_row = BoxLayout(size_hint=(1, None), height=50)
         top_row.add_widget(Label())
         self.dropdown_d = Spinner(
@@ -78,6 +107,7 @@ class MainScreen(Screen):
         self.label_a = Label(text="Sightings: 0", font_size="48sp")
         self.label_b = Label(text="Credits: 0", font_size="48sp")
         self.label_cat = Label(text="Category: Nature", font_size="24sp")
+        self.label_best = Label(text="Best hold: —", font_size="18sp")
 
         # C button on left (above A), switch on right (above B)
         switch_c_layout = BoxLayout(spacing=20, size_hint=(1, 0.6))
@@ -109,6 +139,7 @@ class MainScreen(Screen):
         layout.add_widget(self.label_a)
         layout.add_widget(self.label_b)
         layout.add_widget(self.label_cat)
+        layout.add_widget(self.label_best)
         layout.add_widget(switch_c_layout)
         layout.add_widget(self.grass_row)
         layout.add_widget(btn_layout)
@@ -128,7 +159,40 @@ class MainScreen(Screen):
         )
         self.add_widget(self.flash_label)
 
+        # Bingo overlay — hidden until toggled.
+        bingo_panel = BoxLayout(
+            orientation='vertical',
+            pos_hint={'center_x': 0.5, 'center_y': 0.45},
+            size_hint=(0.92, 0.62),
+            padding=8, spacing=5,
+        )
+        with bingo_panel.canvas.before:
+            Color(0.12, 0.12, 0.12, 0.96)
+            _bingo_bg = Rectangle(pos=bingo_panel.pos, size=bingo_panel.size)
+        bingo_panel.bind(
+            pos=lambda w, v: setattr(_bingo_bg, 'pos', v),
+            size=lambda w, v: setattr(_bingo_bg, 'size', v),
+        )
+        bingo_hdr = BoxLayout(size_hint=(1, None), height=38, spacing=8)
+        bingo_hdr.add_widget(Label(text="BINGO", font_size="20sp", bold=True))
+        btn_close_bingo = Button(text="Close", size_hint=(None, 1), width=80, font_size="14sp")
+        btn_close_bingo.bind(on_press=lambda x: self._toggle_bingo())
+        bingo_hdr.add_widget(btn_close_bingo)
+        bingo_panel.add_widget(bingo_hdr)
+        bingo_grid = GridLayout(cols=3, spacing=4)
+        self._bingo_buttons = []
+        for i in range(9):
+            btn = Button(text="...", font_size="12sp")
+            btn.bind(on_press=lambda x, idx=i: self._mark_bingo_cell(idx))
+            self._bingo_buttons.append(btn)
+            bingo_grid.add_widget(btn)
+        bingo_panel.add_widget(bingo_grid)
+        self._bingo_panel = bingo_panel
+        # Panel is NOT added to the widget tree until the user opens it,
+        # because a disabled Kivy widget still consumes touches in its bounds.
+
         self._decay_event = Clock.schedule_interval(self._tick_decay, 10)
+        self._new_bingo_card()
 
     _OPTION_NAMES = {
         "1a": "(L1)5 sec ∞ looks",
@@ -150,11 +214,24 @@ class MainScreen(Screen):
 
     # (min_score, tick_interval_seconds) — checked highest-first.
     _DIFFICULTY_STEPS = [
-        (1000, 4.0),
-        (800,  3.0),
+        (1000, 3.0),
+        (800,  2.5),
         (500,  2.0),
         (200,  1.5),
         (0,    1.0),
+    ]
+
+    _CONDITIONS = ['sunny', 'rainy', 'foggy', 'night']
+    _CONDITION_LABELS = {
+        'sunny': 'Sunny', 'rainy': 'Rainy', 'foggy': 'Foggy', 'night': 'Night',
+    }
+    _BINGO_ITEMS = [
+        "Bridge", "Tunnel", "Cow", "Truck stop", "Billboard",
+        "Water tower", "Church", "School bus", "Semi truck",
+        "Road work", "River/lake", "Train", "Gas station",
+        "Rest area", "Police car", "Barn", "Wind turbine",
+        "Boat", "Silo", "Mountain", "State sign",
+        "Motorcycle", "Fast food", "Fire truck", "Tractor",
     ]
 
     def _b_interval(self):
@@ -235,7 +312,12 @@ class MainScreen(Screen):
     def _check_level_thresholds(self, old_score):
         for t in self._LEVEL_THRESHOLDS:
             if old_score < t <= self.score_a:
-                self._do_level_up_flash()
+                if self._levelup_reprieve_window:
+                    break  # already in a reprieve window, skip
+                if t not in self._levelup_reprieved:
+                    self._offer_levelup_reprieve(t)
+                else:
+                    self._do_level_up_flash()
                 break
 
     def _do_level_up_flash(self):
@@ -257,26 +339,49 @@ class MainScreen(Screen):
         self.flash_label.text = ""
         Clock.schedule_once(lambda dt: self._run_level_flash(blinks - 1), 0.2)
 
+    def _offer_levelup_reprieve(self, threshold):
+        self._levelup_reprieve_window = True
+        self._levelup_reprieve_threshold = threshold
+        self._flash_color.rgba = (1, 0.7, 0, 1)
+        self.flash_label.text = "Level up! Press C to pay 20 pts and delay"
+        self._levelup_reprieve_event = Clock.schedule_once(self._levelup_reprieve_expired, 5)
+
+    def _levelup_reprieve_expired(self, dt):
+        self._levelup_reprieve_window = False
+        self._levelup_reprieve_threshold = None
+        self._levelup_reprieve_event = None
+        self._flash_color.rgba = (0, 0, 0, 0)
+        self.flash_label.text = ""
+        self._do_level_up_flash()
+
     def _update_flash_rect(self, *args):
         self._flash_rect.pos = self.pos
         self._flash_rect.size = self.size
 
     def _schedule_next_flash(self):
-        if self.score_a >= 800:
-            Clock.schedule_once(self._do_flash, random.uniform(15, 45))
+        if self._condition == 'night':
+            delay = random.uniform(8, 25)
+        elif self.score_a >= 800:
+            delay = random.uniform(15, 45)
         else:
-            Clock.schedule_once(self._do_flash, random.uniform(30, 90))
+            delay = random.uniform(30, 90)
+        Clock.schedule_once(self._do_flash, delay)
 
     def _do_flash(self, dt):
         nlks, npts, mlks, mpts = self._flash_penalties()
+        watch_target = max(5, int(20 / self._b_interval()))
         options = [
             ((1, 0, 0, 1), "Switch!"),
             ((0, 1, 0, 1), f"Nature: -{nlks} lks, -{npts} pts"),
             ((1, 1, 1, 1), f"Man-made: -{mlks} lks, -{mpts} pts"),
             ((0, 0, 1, 1), "Next 10 lks: switch cat."),
             ((0.6, 0, 1, 1), "Power-up stolen!"),
+            ((1, 0.5, 0, 1), "Challenge: Spot 3 in 20s!"),
+            ((0, 0.9, 0.9, 1), f"Challenge: Watch {watch_target} credits!"),
+            ((0.4, 1, 0.4, 1), "Challenge: Earn an L2+ power-up!"),
+            ((1, 0.2, 0.8, 1), "Challenge: Switch 2× in 30s!"),
         ]
-        weights = [1, 1, 1, 1, 2] if self.score_a >= 800 else [1, 1, 1, 1, 1]
+        weights = [1, 1, 1, 1, 2, 1, 1, 1, 1] if self.score_a >= 800 else [1, 1, 1, 1, 1, 1, 1, 1, 1]
         color, text = random.choices(options, weights=weights)[0]
         self._run_flash(color, text, flashes_remaining=3)
 
@@ -308,9 +413,12 @@ class MainScreen(Screen):
                     stolen = self.dropdown_d.values[0]
                     self._cancel_powerup_expiry(stolen)
                     self.dropdown_d.values = self.dropdown_d.values[1:]
+            elif text.startswith("Challenge: "):
+                if self._challenge is None:
+                    self._start_challenge_from_text(text)
             return
         self._flash_color.rgba = color
-        self.flash_label.text = text
+        self.flash_label.text = "???" if self._condition == 'foggy' else text
         Clock.schedule_once(
             lambda dt: self._flash_pause(color, text, flashes_remaining), 0.3
         )
@@ -318,6 +426,10 @@ class MainScreen(Screen):
     def _toggle_category(self):
         self._category = "Man-made" if self._category == "Nature" else "Nature"
         self.label_cat.text = f"Category: {self._category}"
+        if self._challenge and self._challenge['type'] == 'switch':
+            self._challenge['progress'] += 1
+            if self._challenge['progress'] >= self._challenge['target']:
+                self._complete_challenge()
 
     def _start_flash_c_window(self):
         self._flash_c_window = True
@@ -336,6 +448,74 @@ class MainScreen(Screen):
             lambda dt: self._run_flash(color, text, flashes_remaining - 1), 0.2
         )
 
+    def _show_flash_once(self, color, text):
+        self._flash_color.rgba = color
+        self.flash_label.text = text
+        Clock.schedule_once(self._clear_flash_once, 1.0)
+
+    def _clear_flash_once(self, dt):
+        self._flash_color.rgba = (0, 0, 0, 0)
+        self.flash_label.text = ""
+
+    def _start_challenge_from_text(self, text):
+        if "Spot 3 in 20s" in text:
+            self._start_challenge('spot', target=3, window_sec=20, reward_pts=10, reward_lks=0)
+        elif text.startswith("Challenge: Watch ") and "credits!" in text:
+            target = int(text.split()[2])
+            self._start_challenge('watch', target=target, window_sec=60, reward_pts=0, reward_lks=15)
+        elif "L2+" in text:
+            self._start_challenge('powerup', target=2, window_sec=45, reward_pts=20, reward_lks=0)
+        elif "Switch 2×" in text:
+            self._start_challenge('switch', target=2, window_sec=30, reward_pts=15, reward_lks=0)
+
+    def _start_challenge(self, ctype, target, window_sec, reward_pts, reward_lks):
+        self._challenge = {
+            'type': ctype,
+            'target': target,
+            'progress': 0,
+            'deadline_event': Clock.schedule_once(self._expire_challenge, window_sec),
+            'reward_pts': reward_pts,
+            'reward_lks': reward_lks,
+        }
+
+    def _expire_challenge(self, dt):
+        self._challenge = None
+
+    def _complete_challenge(self):
+        if self._challenge is None:
+            return
+        ch = self._challenge
+        self._challenge = None
+        ch['deadline_event'].cancel()
+        if ch['reward_pts'] > 0:
+            old = self.score_a
+            self.score_a += ch['reward_pts']
+            self.label_a.text = f"Sightings: {self.score_a}"
+            self._check_level_thresholds(old)
+        if ch['reward_lks'] > 0:
+            self.score_b += ch['reward_lks']
+            self.label_b.text = f"Credits: {self.score_b}"
+            self.btn_a.disabled = self.score_b < 1
+        reward = f"+{ch['reward_pts']} pts" if ch['reward_pts'] > 0 else f"+{ch['reward_lks']} lks"
+        self._show_flash_once((0, 1, 0.5, 1), f"Challenge done! {reward}")
+
+    def _schedule_patience(self):
+        if self._patience_event:
+            self._patience_event.cancel()
+        if self.score_b > 0:
+            self._patience_event = Clock.schedule_once(self._give_patience_bonus, 30)
+
+    def _give_patience_bonus(self, dt):
+        self._patience_event = None
+        if self.score_b < 1:
+            return
+        old = self.score_a
+        self.score_a += 5
+        self.label_a.text = f"Sightings: {self.score_a}"
+        self._check_level_thresholds(old)
+        self._show_flash_once((0.6, 0.8, 1, 1), "Patience +5 pts!")
+        self._patience_event = Clock.schedule_once(self._give_patience_bonus, 30)
+
     def _commit_b(self):
         # Bank pending credits. Per-hold flags (linear mode, hold 2x) are cleared
         # by _end_hold, not here, so mid-hold A presses don't lose those effects.
@@ -347,6 +527,14 @@ class MainScreen(Screen):
         self.btn_a.disabled = self.score_b < 1
 
     def _end_hold(self):
+        if self._pending_b > self._best_hold and self._pending_b > 0:
+            self._best_hold = self._pending_b
+            self.label_best.text = f"Best hold: {self._best_hold}"
+            key = f"1{random.choice('abcde')}"
+            name = self._OPTION_NAMES[key]
+            self.dropdown_d.values = tuple(self.dropdown_d.values) + (name,)
+            self._schedule_powerup_expiry(name)
+            self._show_flash_once((0, 1, 0.3, 1), f"New record! {self._best_hold} credits!")
         self._hold_double_points = False
         self._linear_mode = False
         self._linear_press_count = 0
@@ -373,6 +561,8 @@ class MainScreen(Screen):
             self._level_up_used_this_run = True
         if tier <= self._run_tier:
             return
+        if self._challenge and self._challenge['type'] == 'powerup' and tier >= 2:
+            self._complete_challenge()
         self._run_tier = tier
         if force_sub_e:
             sub = "e"
@@ -564,19 +754,29 @@ class MainScreen(Screen):
             self.score_b = 0
             self.label_b.text = "Credits: 0"
             self.btn_a.disabled = True
-            return
-        old = self.score_a
-        if self._grass_mode and self.grass_switch.active:
-            self.score_a += 3
-        elif self._double_points or self._hold_double_points:
-            self.score_a += 2
         else:
-            self.score_a += 1
-        self.label_a.text = f"Sightings: {self.score_a}"
-        self._check_level_thresholds(old)
-        self.score_b = max(0, self.score_b - 1)
-        self.label_b.text = f"Credits: {self.score_b}"
-        self.btn_a.disabled = self.score_b < 1
+            old = self.score_a
+            if self._grass_mode and self.grass_switch.active:
+                pts = 3
+            elif self._double_points or self._hold_double_points:
+                pts = 2
+            else:
+                pts = 1
+            if self._condition == 'rainy':
+                self._rainy_a_counter += 1
+                if self._rainy_a_counter % 2 == 0:
+                    pts = 0
+            self.score_a += pts
+            self.label_a.text = f"Sightings: {self.score_a}"
+            self._check_level_thresholds(old)
+            self.score_b = max(0, self.score_b - 1)
+            self.label_b.text = f"Credits: {self.score_b}"
+            self.btn_a.disabled = self.score_b < 1
+        if self._challenge and self._challenge['type'] == 'spot':
+            self._challenge['progress'] += 1
+            if self._challenge['progress'] >= self._challenge['target']:
+                self._complete_challenge()
+        self._schedule_patience()
 
     def _press_a(self, instance):
         # A "spends" one banked Look to award one Point (two while 1b is active).
@@ -620,6 +820,23 @@ class MainScreen(Screen):
             self._end_hold()
 
     def _press_c(self, instance):
+        if self._levelup_reprieve_window:
+            self._levelup_reprieve_window = False
+            t = self._levelup_reprieve_threshold
+            self._levelup_reprieve_threshold = None
+            if self._levelup_reprieve_event:
+                self._levelup_reprieve_event.cancel()
+                self._levelup_reprieve_event = None
+            self._flash_color.rgba = (0, 0, 0, 0)
+            self.flash_label.text = ""
+            if self.score_a >= 20:
+                self.score_a -= 20
+                self.label_a.text = f"Sightings: {self.score_a}"
+                self._levelup_reprieved.add(t)
+                self._show_flash_once((0, 0.8, 1, 1), "Level-up delayed! -20 pts")
+            else:
+                self._do_level_up_flash()
+            return
         # C always acts as A (awards a point, spends a look), plus its own effect.
         if self._flash_c_window:
             self._flash_c_window = False
@@ -654,13 +871,11 @@ class MainScreen(Screen):
             self._next_ac_keep_b = False
         else:
             self._reset_b_timer()
-        self.score_a -= self._c_penalty()
+        self.score_a = max(0, self.score_a - self._c_penalty())
         self.label_a.text = f"Sightings: {self.score_a}"
-        if self.score_a <= -1:
-            self.score_a = 0
-            self.label_a.text = f"Sightings: {self.score_a}"
         self._toggle_category()
-        self._apply_a_score()
+        if self.score_b >= 1:
+            self._apply_a_score()
 
     def _add_b_point(self, dt):
         if self._linear_mode:
@@ -671,6 +886,55 @@ class MainScreen(Screen):
             self._check_level_thresholds(old)
             return
         # Clock callback: adds one Look per tick to the pending buffer.
-        self._pending_b += 1
+        self._pending_b += 2 if self._condition == 'rainy' else 1
         self._update_d_options()
         self.label_b.text = f"Credits: {self.score_b} (+{self._pending_b})"
+        if self._challenge and self._challenge['type'] == 'watch':
+            if self._pending_b >= self._challenge['target']:
+                self._complete_challenge()
+
+    def _on_condition_select(self, instance, value):
+        self._condition = value.lower()
+
+    # ── Bingo ─────────────────────────────────────────────────────────────────
+
+    def _new_bingo_card(self):
+        self._bingo_card = random.sample(self._BINGO_ITEMS, 9)
+        self._bingo_marked = [False] * 9
+        self._update_bingo_ui()
+
+    def _update_bingo_ui(self):
+        for i, btn in enumerate(self._bingo_buttons):
+            btn.text = self._bingo_card[i] if i < len(self._bingo_card) else "?"
+            btn.background_color = (0.2, 0.75, 0.2, 1) if self._bingo_marked[i] else (1, 1, 1, 1)
+
+    def _toggle_bingo(self, *args):
+        self._bingo_visible = not self._bingo_visible
+        if self._bingo_visible:
+            self.add_widget(self._bingo_panel, index=1)  # below flash_label
+        else:
+            self.remove_widget(self._bingo_panel)
+
+    def _mark_bingo_cell(self, idx):
+        self._bingo_marked[idx] = not self._bingo_marked[idx]
+        self._update_bingo_ui()
+        if self._bingo_marked[idx]:
+            self._check_bingo()
+
+    def _check_bingo(self):
+        m = self._bingo_marked
+        lines = [
+            [0, 1, 2], [3, 4, 5], [6, 7, 8],
+            [0, 3, 6], [1, 4, 7], [2, 5, 8],
+            [0, 4, 8], [2, 4, 6],
+        ]
+        for line in lines:
+            if all(m[i] for i in line):
+                old = self.score_a
+                self.score_a += 25
+                self.label_a.text = f"Sightings: {self.score_a}"
+                self._check_level_thresholds(old)
+                self._show_flash_once((1, 1, 0, 1), "BINGO! +25 pts!")
+                Clock.schedule_once(lambda dt: self._new_bingo_card(), 2.0)
+                break
+

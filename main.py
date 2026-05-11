@@ -1,12 +1,14 @@
 from kivy.app import App
-from kivy.uix.screenmanager import ScreenManager, Screen
+from kivy.uix.screenmanager import ScreenManager
 
+from src.screens.start_screen import StartScreen
 from src.screens.main_screen import MainScreen
 
 
 class RoadGameApp(App):
     def build(self):
         sm = ScreenManager()
+        sm.add_widget(StartScreen(name="start"))
         sm.add_widget(MainScreen(name="main"))
         return sm
 
