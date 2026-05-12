@@ -15,6 +15,7 @@ class RoadGameApp(App):
     badges = set()
     active_badges = set()       # badges selected for the current game (max 5)
     badge_cooldowns = {}        # {badge_id: games_remaining_on_cooldown}
+    badge_levels = {}           # {badge_id: upgrade_level (0-3)}
     mp_client = None            # RelayClient while a multiplayer session is live
     mp_active = False           # True when entering main screen via online play
     mp_role = None              # 'host' or 'guest'
@@ -37,6 +38,7 @@ class RoadGameApp(App):
             self.coins = data.get('coins', 0)
             self.badges = set(data.get('badges', []))
             self.badge_cooldowns = {k: v for k, v in data.get('badge_cooldowns', {}).items()}
+            self.badge_levels = {k: v for k, v in data.get('badge_levels', {}).items()}
         except Exception:
             pass
 
@@ -45,6 +47,7 @@ class RoadGameApp(App):
             'coins': self.coins,
             'badges': list(self.badges),
             'badge_cooldowns': self.badge_cooldowns,
+            'badge_levels': self.badge_levels,
         }
         try:
             with open(self._save_path(), 'w') as f:

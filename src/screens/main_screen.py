@@ -77,7 +77,7 @@ class MainScreen(Screen):
         self._coins_earned = 0      # coins awarded from score_a this session
         self._rival_skip_remaining = 0  # turns rival skips actions (Rival Chill upgrade)
         self._next_flash_event = None   # handle for the pending _do_flash schedule
-        self._dragon_shield_active = False  # True if dragon badge owned and not yet used
+        self._dragon_shields_remaining = 0  # shields left from dragon badge this game
         self._kirin_counter = 0             # counts A presses for Kirin 10th-press bonus
         self._tourist_event = None          # Clock event for next tourist appearance
         self._tourist_prompt_event = None   # auto-dismiss timeout while tourist is showing
@@ -584,6 +584,19 @@ class MainScreen(Screen):
         'Desert':       0.0,
     }
 
+    def _badge_level(self, badge_id):
+        """Return upgrade level (0-3) if badge is active this game, else -1."""
+        app = App.get_running_app()
+        if badge_id not in app.active_badges:
+            return -1
+        return app.badge_levels.get(badge_id, 0)
+
+    def _phoenix_floor(self):
+        lv = self._badge_level('phoenix')
+        if lv < 0:
+            return 0
+        return (5, 10, 20, 30)[lv]
+
     def _difficulty_score(self):
         if self._locked_thresholds:
             return max(self.score_a, max(self._locked_thresholds))
@@ -597,8 +610,11 @@ class MainScreen(Screen):
                 break
         else:
             base = 1.0
-        if 'centaur' in App.get_running_app().active_badges:
-            base = max(0.5, base - 0.5)
+        lv = self._badge_level('centaur')
+        if lv >= 0:
+            reductions = (0.5, 0.6, 0.7, 0.8)
+            mins = (0.5, 0.4, 0.35, 0.3)
+            base = max(mins[lv], base - reductions[lv])
         return base
 
     def _c_penalty(self):
@@ -611,8 +627,10 @@ class MainScreen(Screen):
             penalty = 30
         else:
             penalty = 20
-        if 'selkie' in App.get_running_app().active_badges:
-            penalty = max(1, penalty // 2)
+        lv = self._badge_level('selkie')
+        if lv >= 0:
+            divisors = (2, 3, 4, 100)
+            penalty = max(1, penalty // divisors[lv])
         return penalty
 
     def _flash_penalties(self):
@@ -626,8 +644,10 @@ class MainScreen(Screen):
             nlks, npts, mlks, mpts = 15, 30, 30, 15
         else:
             nlks, npts, mlks, mpts = 10, 25, 25, 10
-        if 'banshee' in App.get_running_app().active_badges:
-            nlks, npts, mlks, mpts = int(nlks*0.7), int(npts*0.7), int(mlks*0.7), int(mpts*0.7)
+        lv = self._badge_level('banshee')
+        if lv >= 0:
+            mult = (0.70, 0.60, 0.50, 0.40)[lv]
+            nlks, npts, mlks, mpts = int(nlks*mult), int(npts*mult), int(mlks*mult), int(mpts*mult)
         return nlks, npts, mlks, mpts
 
     def _tick_decay(self, dt):
@@ -774,27 +794,25 @@ class MainScreen(Screen):
                 self._start_flash_c_window()
             elif text.startswith("Nature: -"):
                 if self._category == "Nature":
-                    if self._dragon_shield_active:
-                        self._dragon_shield_active = False
+                    if self._dragon_shields_remaining > 0:
+                        self._dragon_shields_remaining -= 1
                         self._show_flash_once((1, 0.5, 0.1, 1), "Dragon blocked the penalty!")
                     else:
                         nlks, npts, _, _ = self._flash_penalties()
-                        floor = 5 if 'phoenix' in App.get_running_app().active_badges else 0
                         self.score_b = max(0, self.score_b - nlks)
-                        self.score_a = max(floor, self.score_a - npts)
+                        self.score_a = max(self._phoenix_floor(), self.score_a - npts)
                         self.label_b.text = f"Credits: {self.score_b}"
                         self.label_a.text = f"Sightings: {self.score_a}"
                         self.btn_a.disabled = self.score_b < 1
             elif text.startswith("Man-made: -"):
                 if self._category == "Man-made":
-                    if self._dragon_shield_active:
-                        self._dragon_shield_active = False
+                    if self._dragon_shields_remaining > 0:
+                        self._dragon_shields_remaining -= 1
                         self._show_flash_once((1, 0.5, 0.1, 1), "Dragon blocked the penalty!")
                     else:
                         _, _, mlks, mpts = self._flash_penalties()
-                        floor = 5 if 'phoenix' in App.get_running_app().active_badges else 0
                         self.score_b = max(0, self.score_b - mlks)
-                        self.score_a = max(floor, self.score_a - mpts)
+                        self.score_a = max(self._phoenix_floor(), self.score_a - mpts)
                         self.label_b.text = f"Credits: {self.score_b}"
                         self.label_a.text = f"Sightings: {self.score_a}"
                         self.btn_a.disabled = self.score_b < 1
@@ -831,8 +849,7 @@ class MainScreen(Screen):
     def _flash_c_penalty(self, dt):
         self._flash_c_window = False
         self._flash_c_event = None
-        floor = 5 if 'phoenix' in App.get_running_app().active_badges else 0
-        self.score_a = max(floor, self.score_a - self._c_penalty())
+        self.score_a = max(self._phoenix_floor(), self.score_a - self._c_penalty())
         self.label_a.text = f"Sightings: {self.score_a}"
 
     def _flash_pause(self, color, text, flashes_remaining):
@@ -842,14 +859,16 @@ class MainScreen(Screen):
             lambda dt: self._run_flash(color, text, flashes_remaining - 1), 0.2
         )
 
-    def _show_flash_once(self, color, text):
+    def _show_flash_once(self, color, text, font_size="48sp"):
         self._flash_color.rgba = color
+        self.flash_label.font_size = font_size
         self.flash_label.text = text
         Clock.schedule_once(self._clear_flash_once, 1.0)
 
     def _clear_flash_once(self, dt):
         self._flash_color.rgba = (0, 0, 0, 0)
         self.flash_label.text = ""
+        self.flash_label.font_size = "48sp"
 
     def _start_challenge_from_text(self, text):
         if "Spot 3 in 20s" in text:
@@ -863,8 +882,9 @@ class MainScreen(Screen):
             self._start_challenge('switch', target=2, window_sec=30, reward_pts=15, reward_lks=0)
 
     def _start_challenge(self, ctype, target, window_sec, reward_pts, reward_lks):
-        if 'manticore' in App.get_running_app().active_badges:
-            window_sec = int(window_sec * 1.5)
+        lv = self._badge_level('manticore')
+        if lv >= 0:
+            window_sec = int(window_sec * (1.5, 1.75, 2.0, 2.5)[lv])
         self._challenge = {
             'type': ctype,
             'target': target,
@@ -895,25 +915,28 @@ class MainScreen(Screen):
         reward = f"+{ch['reward_pts']} pts" if ch['reward_pts'] > 0 else f"+{ch['reward_lks']} lks"
         self._show_flash_once((0, 1, 0.5, 1), f"Challenge done! {reward}")
 
+    def _patience_delay(self):
+        lv = self._badge_level('nessie')
+        return (20, 18, 15, 12)[lv] if lv >= 0 else 30
+
     def _schedule_patience(self):
         if self._patience_event:
             self._patience_event.cancel()
         if self.score_b > 0:
-            delay = 20 if 'nessie' in App.get_running_app().active_badges else 30
-            self._patience_event = Clock.schedule_once(self._give_patience_bonus, delay)
+            self._patience_event = Clock.schedule_once(self._give_patience_bonus, self._patience_delay())
 
     def _give_patience_bonus(self, dt):
         self._patience_event = None
         if self.score_b < 1:
             return
         old = self.score_a
-        bonus = 10 if 'mermaid' in App.get_running_app().active_badges else 5
+        mer_lv = self._badge_level('mermaid')
+        bonus = (10, 12, 15, 20)[mer_lv] if mer_lv >= 0 else 5
         self.score_a += bonus
         self.label_a.text = f"Sightings: {self.score_a}"
         self._check_level_thresholds(old)
         self._show_flash_once((0.6, 0.8, 1, 1), f"Patience +{bonus} pts!")
-        delay = 20 if 'nessie' in App.get_running_app().active_badges else 30
-        self._patience_event = Clock.schedule_once(self._give_patience_bonus, delay)
+        self._patience_event = Clock.schedule_once(self._give_patience_bonus, self._patience_delay())
 
     def _commit_b(self):
         # Bank pending credits. Per-hold flags (linear mode, hold 2x) are cleared
@@ -950,7 +973,7 @@ class MainScreen(Screen):
             tier = 1
         else:
             return
-        if 'sphinx' in App.get_running_app().active_badges:
+        if self._badge_level('sphinx') >= 0:
             tier = min(3, tier + 1)
         force_sub_e = self._force_sub_e
         if self._next_powerup_level_up:
@@ -1175,11 +1198,14 @@ class MainScreen(Screen):
             if self._hitch_effect == 'bonus_spot' and pts > 0:
                 pts += 1
             self.score_a += pts
-            if self._condition == 'rainy' and 'thunderbird' in App.get_running_app().active_badges and pts > 0:
-                self.score_a += 1
-            if 'kirin' in App.get_running_app().active_badges:
+            tb_lv = self._badge_level('thunderbird')
+            if self._condition == 'rainy' and tb_lv >= 0 and pts > 0:
+                self.score_a += (1, 2, 3, 4)[tb_lv]
+            kirin_lv = self._badge_level('kirin')
+            if kirin_lv >= 0:
                 self._kirin_counter += 1
-                if self._kirin_counter % 10 == 0:
+                interval = (10, 8, 6, 5)[kirin_lv]
+                if self._kirin_counter % interval == 0:
                     self.score_a += pts * 2  # already added pts once, so add 2× more = 3× total
             self.label_a.text = f"Sightings: {self.score_a}"
             self._check_level_thresholds(old)
@@ -1198,8 +1224,7 @@ class MainScreen(Screen):
         # A "spends" one banked Look to award one Point (two while 1b is active).
         if self._forced_c_remaining > 0:
             self._forced_c_remaining -= 1
-            floor = 5 if 'phoenix' in App.get_running_app().active_badges else 0
-            self.score_a = max(floor, self.score_a - 5)
+            self.score_a = max(self._phoenix_floor(), self.score_a - 5)
             self.label_a.text = f"Sightings: {self.score_a}"
             return
         if self._next_ac_keep_b:
@@ -1288,8 +1313,7 @@ class MainScreen(Screen):
             self._next_ac_keep_b = False
         else:
             self._reset_b_timer()
-        floor = 5 if 'phoenix' in App.get_running_app().active_badges else 0
-        self.score_a = max(floor, self.score_a - self._c_penalty())
+        self.score_a = max(self._phoenix_floor(), self.score_a - self._c_penalty())
         self.label_a.text = f"Sightings: {self.score_a}"
         self._toggle_category()
         if self.score_b >= 1:
@@ -1305,8 +1329,9 @@ class MainScreen(Screen):
             return
         # Clock callback: adds one Look per tick to the pending buffer.
         base = 2 if self._condition == 'rainy' else 1
-        if 'pegasus' in App.get_running_app().active_badges:
-            base += 1
+        peg_lv = self._badge_level('pegasus')
+        if peg_lv >= 0:
+            base += (1, 1, 2, 3)[peg_lv]
         if self._hitch_effect == 'fast_credits':
             base += 1
         self._pending_b += base
@@ -1403,7 +1428,7 @@ class MainScreen(Screen):
         self._alpha_found = 0
         self._coins_earned = 0
         self._next_flash_event = None
-        self._dragon_shield_active = False
+        self._dragon_shields_remaining = 0
         self._kirin_counter = 0
         self._tourist_event = None
         self._tourist_prompt_event = None
@@ -1464,7 +1489,12 @@ class MainScreen(Screen):
                 if app.badge_cooldowns[badge_id] <= 0:
                     del app.badge_cooldowns[badge_id]
         for badge_id in app.active_badges:
-            app.badge_cooldowns[badge_id] = 3
+            lv = app.badge_levels.get(badge_id, 0)
+            cd = max(0, 3 - lv)  # L0=3, L1=2, L2=1, L3=0 (no cooldown)
+            if cd > 0:
+                app.badge_cooldowns[badge_id] = cd
+            else:
+                app.badge_cooldowns.pop(badge_id, None)
         app.active_badges.clear()
         app.save_state()
 
@@ -1499,8 +1529,9 @@ class MainScreen(Screen):
                 self._update_bingo_ui()
         app.pending_upgrades.clear()
         # Activate badge effects that need to be set at game start
-        if 'dragon' in app.active_badges:
-            self._dragon_shield_active = True
+        dragon_lv = self._badge_level('dragon')
+        if dragon_lv >= 0:
+            self._dragon_shields_remaining = (1, 2, 3, 5)[dragon_lv]
         self._kirin_counter = 0
 
     # ── Online multiplayer ────────────────────────────────────────────────────
@@ -1528,7 +1559,8 @@ class MainScreen(Screen):
             app.mp_client.send(t='score', v=self.score_a)
 
     def _update_coins(self):
-        divisor = 15 if 'unicorn' in App.get_running_app().active_badges else 25
+        lv = self._badge_level('unicorn')
+        divisor = (20, 16, 12, 8)[lv] if lv >= 0 else 25
         should_have = self.score_a // divisor
         if should_have > self._coins_earned:
             App.get_running_app().coins += should_have - self._coins_earned
@@ -1614,8 +1646,9 @@ class MainScreen(Screen):
                 reward = 50 if golden else 25
                 old = self.score_a
                 self.score_a += reward
-                if 'wendigo' in App.get_running_app().active_badges:
-                    self.score_a += 10
+                wen_lv = self._badge_level('wendigo')
+                if wen_lv >= 0:
+                    self.score_a += (10, 15, 20, 25)[wen_lv]
                 self.label_a.text = f"Sightings: {self.score_a}"
                 self._check_level_thresholds(old)
                 msg = f"GOLDEN BINGO! +{reward} pts!" if golden else f"BINGO! +{reward} pts!"
@@ -1645,9 +1678,10 @@ class MainScreen(Screen):
         Clock.schedule_once(lambda dt: self._show_flash_once((0.6, 0.2, 1, 1), desc), 2.2)
         # Immediate badge effects
         if badge_id == 'dragon':
-            self._dragon_shield_active = True
+            self._dragon_shields_remaining = max(self._dragon_shields_remaining, 1)
         elif badge_id == 'basilisk':
-            self._rival_skip_remaining += 20
+            lv = app.badge_levels.get('basilisk', 0)
+            self._rival_skip_remaining += (20, 25, 30, 40)[lv]
 
     # ── Alphabet Hunt ─────────────────────────────────────────────────────────
 
@@ -1731,14 +1765,16 @@ class MainScreen(Screen):
     # ── Rare Animal Encounters ────────────────────────────────────────────────
 
     def _try_rare_animal(self):
-        threshold = 0.005 if 'bigfoot' in App.get_running_app().active_badges else 0.015
+        bf_lv = self._badge_level('bigfoot')
+        threshold = (0.005, 0.0038, 0.0025, 0.0015)[bf_lv] if bf_lv >= 0 else 0.015
         if self._hitch_effect == 'rare_boost':
             threshold /= 3
         if random.random() > threshold:
             return
         choice = random.choice(('dhole', 'albino', 'mothman'))
         if choice == 'dhole':
-            dhole_reward = 100 if 'griffin' in App.get_running_app().active_badges else 50
+            grif_lv = self._badge_level('griffin')
+            dhole_reward = (100, 125, 150, 200)[grif_lv] if grif_lv >= 0 else 50
             old = self.score_a
             self.score_a += dhole_reward
             self.label_a.text = f"Sightings: {self.score_a}"
@@ -1755,7 +1791,8 @@ class MainScreen(Screen):
                 Clock.schedule_once(lambda dt: self._mothman_penalty(dt), 1.2)
 
     def _mothman_reward(self, dt):
-        reward = 200 if 'griffin' in App.get_running_app().active_badges else 100
+        grif_lv = self._badge_level('griffin')
+        reward = (200, 250, 300, 400)[grif_lv] if grif_lv >= 0 else 100
         old = self.score_a
         self.score_a += reward
         self.label_a.text = f"Sightings: {self.score_a}"
@@ -1763,8 +1800,7 @@ class MainScreen(Screen):
         self._show_flash_once((0, 1, 0.3, 1), f"Mothman omen! +{reward}")
 
     def _mothman_penalty(self, dt):
-        floor = 5 if 'phoenix' in App.get_running_app().active_badges else 0
-        self.score_a = max(floor, self.score_a - 30)
+        self.score_a = max(self._phoenix_floor(), self.score_a - 30)
         self.score_b = max(0, self.score_b - 15)
         self.label_a.text = f"Sightings: {self.score_a}"
         self.label_b.text = f"Credits: {self.score_b}"
@@ -1826,8 +1862,7 @@ class MainScreen(Screen):
                 self._check_level_thresholds(old)
                 self._show_flash_once((1, 0.55, 0, 1), "Scam worked! +30 pts")
             else:
-                floor = 5 if 'phoenix' in App.get_running_app().active_badges else 0
-                self.score_a = max(floor, self.score_a - 20)
+                self.score_a = max(self._phoenix_floor(), self.score_a - 20)
                 self.label_a.text = f"Sightings: {self.score_a}"
                 self._show_flash_once((1, 0.2, 0.2, 1), "Karma got you! -20 pts")
         self._schedule_tourist()
@@ -1949,18 +1984,17 @@ class MainScreen(Screen):
 
     def _trigger_patrol(self, reason):
         self._patrol_active = True
-        floor = 5 if 'phoenix' in App.get_running_app().active_badges else 0
-        self.score_a = max(floor, self.score_a - 15)
+        self.score_a = max(self._phoenix_floor(), self.score_a - 15)
         self.label_a.text = f"Sightings: {self.score_a}"
         self.btn_a.disabled = True
-        self._show_flash_once((0.25, 0.25, 1, 1), f"Highway Patrol! {reason} — -15 pts, 20s hold")
+        self._show_flash_once((0.25, 0.25, 1, 1), f"Highway Patrol! {reason} — -15 pts, 20s hold", font_size="22sp")
         self._patrol_event = Clock.schedule_once(self._release_patrol, 20)
 
     def _release_patrol(self, dt):
         self._patrol_active = False
         self._patrol_event = None
         self.btn_a.disabled = self.score_b < 1
-        self._show_flash_once((0.4, 0.6, 1, 1), "Highway Patrol cleared — drive safely!")
+        self._show_flash_once((0.4, 0.6, 1, 1), "Highway Patrol cleared — drive safely!", font_size="22sp")
 
     # ── Rival Spotter ─────────────────────────────────────────────────────────
 
@@ -1990,8 +2024,9 @@ class MainScreen(Screen):
     def _rival_turn(self, dt):
         gap = self.score_a - self._rival_score
         pts = 15 if gap > 200 else 10 if gap > 100 else 5 if gap > 0 else 2
-        if 'kraken' in App.get_running_app().active_badges:
-            pts = max(1, pts - 1)
+        krak_lv = self._badge_level('kraken')
+        if krak_lv >= 0:
+            pts = max(1, pts - (1, 2, 3, 4)[krak_lv])
         self._rival_score += pts
         self.rival_label.text = f"Rival: {self._rival_score}"
 
@@ -2034,7 +2069,7 @@ class MainScreen(Screen):
 
     def _rival_trigger_penalty(self):
         kind = random.choice(('pts', 'lks', 'both'))
-        floor = 5 if 'phoenix' in App.get_running_app().active_badges else 0
+        floor = self._phoenix_floor()
         if kind == 'pts':
             amt = random.choice((20, 25, 30))
             self.score_a = max(floor, self.score_a - amt)

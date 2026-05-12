@@ -141,6 +141,9 @@ class StartScreen(Screen):
         self._badges_count_label = Label(text="0 / 20", font_size="18sp",
                                          color=(0.6, 0.2, 1, 1))
         badges_hdr.add_widget(self._badges_count_label)
+        self._coin_badge_label = Label(text="Coins: 0", font_size="14sp",
+                                       color=(1, 0.85, 0, 1))
+        badges_hdr.add_widget(self._coin_badge_label)
         btn_close_badges = Button(text="Close", size_hint=(None, 1), width=90, font_size="15sp")
         btn_close_badges.bind(on_press=lambda x: self._toggle_badges())
         badges_hdr.add_widget(btn_close_badges)
@@ -185,75 +188,116 @@ class StartScreen(Screen):
         else:
             self.remove_widget(self._shop_panel)
 
+    _UPGRADE_COSTS = [500, 750, 1000]  # cost to reach level 1, 2, 3
+
     def _toggle_badges(self):
         from src.screens.main_screen import MainScreen as _MS
         self._badges_visible = not self._badges_visible
         if self._badges_visible:
             app = App.get_running_app()
-            earned = app.badges
-            cooldowns = app.badge_cooldowns
-            all_badges = _MS._BADGES
             self._pending_badge_selection = set(app.active_badges)
+            earned = app.badges
+            all_badges = _MS._BADGES
             self._badges_count_label.text = f"{len(earned)} / {len(all_badges)}"
             n = len(self._pending_badge_selection)
             self._selected_label.text = f"Selected: {n} / 5  (select up to 5 badges for this game)"
-            self._badges_list.clear_widgets()
-            for badge_id, name, desc in all_badges:
-                if badge_id not in earned:
-                    continue
-                row = BoxLayout(size_hint=(1, None), height=60, spacing=8)
-                info = BoxLayout(orientation='vertical', size_hint_x=0.62)
-                lbl_name = Label(
-                    text=f"[b]{name}[/b]",
-                    markup=True,
-                    font_size="15sp",
-                    color=(0.6, 0.2, 1, 1),
-                    size_hint_y=None, height=26,
-                    halign='left', valign='middle',
-                )
-                lbl_desc = Label(
-                    text=desc,
-                    font_size="11sp",
-                    color=(0.9, 0.9, 0.9, 1),
-                    size_hint_y=None, height=30,
-                    halign='left', valign='middle',
-                )
-                info.add_widget(lbl_name)
-                info.add_widget(lbl_desc)
-                row.add_widget(info)
-                cd = cooldowns.get(badge_id, 0)
-                if cd > 0:
-                    btn = Button(
-                        text=f"Cooldown: {cd}",
-                        font_size="12sp",
-                        size_hint_x=0.38,
-                        disabled=True,
-                    )
-                else:
-                    is_sel = badge_id in self._pending_badge_selection
-                    btn = Button(
-                        text="Active" if is_sel else "Select",
-                        font_size="13sp",
-                        size_hint_x=0.38,
-                        background_color=(0.3, 0.7, 0.3, 1) if is_sel else (1, 1, 1, 1),
-                    )
-                    btn.bind(on_press=lambda x, bid=badge_id, b=btn: self._toggle_badge_select(bid, b))
-                row.add_widget(btn)
-                self._badges_list.add_widget(row)
-            if not earned:
-                self._badges_list.add_widget(Label(
-                    text="No badges earned yet. Get a double-golden bingo to earn one!",
-                    font_size="14sp",
-                    color=(0.6, 0.6, 0.6, 1),
-                    size_hint_y=None,
-                    height=60,
-                    halign='center',
-                    valign='middle',
-                ))
+            self._coin_badge_label.text = f"Coins: {app.coins}"
+            self._rebuild_badges_list()
             self.add_widget(self._badges_panel)
         else:
             App.get_running_app().active_badges = set(self._pending_badge_selection)
             self.remove_widget(self._badges_panel)
+
+    def _rebuild_badges_list(self):
+        from src.screens.main_screen import MainScreen as _MS
+        app = App.get_running_app()
+        earned = app.badges
+        cooldowns = app.badge_cooldowns
+        all_badges = _MS._BADGES
+        self._badges_list.clear_widgets()
+        for badge_id, name, desc in all_badges:
+            if badge_id not in earned:
+                continue
+            level = app.badge_levels.get(badge_id, 0)
+            row = BoxLayout(size_hint=(1, None), height=70, spacing=6)
+
+            # Info: name with level tag + description
+            info = BoxLayout(orientation='vertical', size_hint_x=1)
+            lv_text = "[color=888888]MAX[/color]" if level >= 3 else f"[color=aaaaff]Lv.{level}[/color]"
+            lbl_name = Label(
+                text=f"[b]{name}[/b]  {lv_text}",
+                markup=True,
+                font_size="14sp",
+                color=(0.6, 0.2, 1, 1),
+                size_hint_y=None, height=26,
+                halign='left', valign='middle',
+            )
+            lbl_desc = Label(
+                text=desc,
+                font_size="11sp",
+                color=(0.9, 0.9, 0.9, 1),
+                size_hint_y=None, height=30,
+                halign='left', valign='middle',
+            )
+            info.add_widget(lbl_name)
+            info.add_widget(lbl_desc)
+            row.add_widget(info)
+
+            # Upgrade button
+            if level >= 3:
+                btn_up = Button(text="MAX", font_size="11sp",
+                                size_hint=(None, 1), width=74, disabled=True)
+            else:
+                cost = self._UPGRADE_COSTS[level]
+                can_afford = app.coins >= cost
+                btn_up = Button(
+                    text=f"→Lv.{level+1}\n{cost}c",
+                    font_size="11sp",
+                    size_hint=(None, 1), width=74,
+                    background_color=(0.2, 0.5, 0.9, 1) if can_afford else (0.35, 0.35, 0.35, 1),
+                    disabled=not can_afford,
+                )
+                btn_up.bind(on_press=lambda x, bid=badge_id: self._upgrade_badge(bid))
+            row.add_widget(btn_up)
+
+            # Select / cooldown button
+            cd = cooldowns.get(badge_id, 0)
+            if cd > 0:
+                btn_sel = Button(text=f"CD: {cd}", font_size="12sp",
+                                 size_hint=(None, 1), width=78, disabled=True)
+            else:
+                is_sel = badge_id in self._pending_badge_selection
+                btn_sel = Button(
+                    text="Active" if is_sel else "Select",
+                    font_size="13sp",
+                    size_hint=(None, 1), width=78,
+                    background_color=(0.3, 0.7, 0.3, 1) if is_sel else (1, 1, 1, 1),
+                )
+                btn_sel.bind(on_press=lambda x, bid=badge_id, b=btn_sel: self._toggle_badge_select(bid, b))
+            row.add_widget(btn_sel)
+            self._badges_list.add_widget(row)
+
+        if not earned:
+            self._badges_list.add_widget(Label(
+                text="No badges earned yet. Get a double-golden bingo to earn one!",
+                font_size="14sp", color=(0.6, 0.6, 0.6, 1),
+                size_hint_y=None, height=60,
+                halign='center', valign='middle',
+            ))
+
+    def _upgrade_badge(self, badge_id):
+        app = App.get_running_app()
+        level = app.badge_levels.get(badge_id, 0)
+        if level >= 3:
+            return
+        cost = self._UPGRADE_COSTS[level]
+        if app.coins < cost:
+            return
+        app.coins -= cost
+        app.badge_levels[badge_id] = level + 1
+        app.save_state()
+        self._coin_badge_label.text = f"Coins: {app.coins}"
+        self._rebuild_badges_list()
 
     def _toggle_badge_select(self, badge_id, btn):
         if badge_id in self._pending_badge_selection:
@@ -272,7 +316,8 @@ class StartScreen(Screen):
     def _buy_upgrade(self, key, cost):
         app = App.get_running_app()
         if 'leprechaun' in app.badges:
-            cost = max(1, cost - 3)
+            discount = (3, 4, 5, 6)[app.badge_levels.get('leprechaun', 0)]
+            cost = max(1, cost - discount)
         if app.coins < cost:
             return
         app.coins -= cost
