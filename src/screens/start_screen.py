@@ -39,6 +39,16 @@ class StartScreen(Screen):
         btn_play.bind(on_press=self._start_game)
         layout.add_widget(btn_play)
 
+        btn_online = Button(
+            text="Online Play",
+            font_size="24sp",
+            size_hint=(0.5, None),
+            height=70,
+            pos_hint={"center_x": 0.5},
+        )
+        btn_online.bind(on_press=self._start_online)
+        layout.add_widget(btn_online)
+
         btn_shop = Button(
             text="Shop",
             font_size="24sp",
@@ -163,6 +173,9 @@ class StartScreen(Screen):
 
     def _start_game(self, instance):
         self.manager.current = "main"
+
+    def _start_online(self, instance):
+        self.manager.current = "lobby"
 
     def _toggle_shop(self):
         self._shop_visible = not self._shop_visible

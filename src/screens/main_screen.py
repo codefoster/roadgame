@@ -78,9 +78,20 @@ class MainScreen(Screen):
         self._next_flash_event = None   # handle for the pending _do_flash schedule
         self._dragon_shield_active = False  # True if dragon badge owned and not yet used
         self._kirin_counter = 0             # counts A presses for Kirin 10th-press bonus
+        self._tourist_event = None          # Clock event for next tourist appearance
+        self._tourist_prompt_event = None   # auto-dismiss timeout while tourist is showing
+        self._tourist_visible = False
+        self._hitchhiker_event = None       # Clock event for next hitchhiker appearance
+        self._hitchhiker_prompt_event = None
+        self._hitchhiker_visible = False
+        self._hitch_pending = None          # hitchhiker dict currently shown
+        self._hitch_effect = None           # active timed effect string or None
+        self._hitch_effect_event = None     # Clock event for effect expiry
         self._rival_score = 0
         self._rival_event = None
         self._rival_stolen_cells = set()
+        self._mp_opponent_score = 0
+        self._mp_sync_event = None
 
         with self.canvas.before:
             self._flash_color = Color(0, 0, 0, 0)
@@ -167,6 +178,7 @@ class MainScreen(Screen):
 
         btn_layout.add_widget(self.btn_a)
         btn_layout.add_widget(self.btn_b)
+
         layout.add_widget(self.label_a)
         layout.add_widget(self.label_b)
         layout.add_widget(self.label_cat)
@@ -262,26 +274,124 @@ class MainScreen(Screen):
         alpha_panel.add_widget(self._alpha_display)
         self._alpha_panel = alpha_panel
 
+        # Tourist overlay — hidden until a tourist appears.
+        tourist_panel = BoxLayout(
+            orientation='vertical',
+            pos_hint={'center_x': 0.5, 'center_y': 0.5},
+            size_hint=(0.88, 0.44),
+            padding=12, spacing=8,
+        )
+        with tourist_panel.canvas.before:
+            Color(0.08, 0.12, 0.16, 0.97)
+            _tourist_bg = Rectangle(pos=tourist_panel.pos, size=tourist_panel.size)
+        tourist_panel.bind(
+            pos=lambda w, v: setattr(_tourist_bg, 'pos', v),
+            size=lambda w, v: setattr(_tourist_bg, 'size', v),
+        )
+        self._tourist_name_label = Label(
+            text="A tourist appears!",
+            font_size="18sp", bold=True,
+            color=(1, 0.85, 0.3, 1),
+            size_hint_y=None, height=32,
+        )
+        tourist_panel.add_widget(self._tourist_name_label)
+        self._tourist_desc_label = Label(
+            text="",
+            font_size="13sp",
+            color=(0.9, 0.9, 0.9, 1),
+            size_hint_y=None, height=40,
+            halign='center', valign='middle',
+        )
+        tourist_panel.add_widget(self._tourist_desc_label)
+        tourist_btn_row = BoxLayout(size_hint=(1, None), height=68, spacing=8)
+        btn_guide = Button(text="Guide\n+15 pts", font_size="14sp",
+                           background_color=(0.2, 0.7, 0.2, 1))
+        btn_guide.bind(on_press=lambda x: self._tourist_choice('guide'))
+        btn_ignore = Button(text="Ignore\n+3 pts", font_size="14sp",
+                            background_color=(0.45, 0.45, 0.45, 1))
+        btn_ignore.bind(on_press=lambda x: self._tourist_choice('ignore'))
+        btn_scam = Button(text="Scam\n(risky!)", font_size="14sp",
+                          background_color=(0.85, 0.35, 0, 1))
+        btn_scam.bind(on_press=lambda x: self._tourist_choice('scam'))
+        tourist_btn_row.add_widget(btn_guide)
+        tourist_btn_row.add_widget(btn_ignore)
+        tourist_btn_row.add_widget(btn_scam)
+        tourist_panel.add_widget(tourist_btn_row)
+        tourist_panel.add_widget(Label(
+            text="Respond quickly — they won't wait long!",
+            font_size="11sp", color=(0.55, 0.55, 0.55, 1),
+            size_hint_y=None, height=22,
+        ))
+        self._tourist_panel = tourist_panel
+
+        # Hitchhiker overlay — hidden until triggered.
+        hitch_panel = BoxLayout(
+            orientation='vertical',
+            pos_hint={'center_x': 0.5, 'center_y': 0.5},
+            size_hint=(0.88, 0.44),
+            padding=12, spacing=8,
+        )
+        with hitch_panel.canvas.before:
+            Color(0.10, 0.10, 0.18, 0.97)
+            _hitch_bg = Rectangle(pos=hitch_panel.pos, size=hitch_panel.size)
+        hitch_panel.bind(
+            pos=lambda w, v: setattr(_hitch_bg, 'pos', v),
+            size=lambda w, v: setattr(_hitch_bg, 'size', v),
+        )
+        self._hitch_name_label = Label(
+            text="A hitchhiker waves!",
+            font_size="18sp", bold=True,
+            color=(0.5, 0.8, 1, 1),
+            size_hint_y=None, height=32,
+        )
+        hitch_panel.add_widget(self._hitch_name_label)
+        self._hitch_desc_label = Label(
+            text="",
+            font_size="13sp",
+            color=(0.9, 0.9, 0.9, 1),
+            size_hint_y=None, height=40,
+            halign='center', valign='middle',
+        )
+        hitch_panel.add_widget(self._hitch_desc_label)
+        self._hitch_effect_label = Label(
+            text="",
+            font_size="12sp",
+            color=(0.5, 0.8, 1, 1),
+            size_hint_y=None, height=24,
+            halign='center', valign='middle',
+        )
+        hitch_panel.add_widget(self._hitch_effect_label)
+        hitch_btn_row = BoxLayout(size_hint=(1, None), height=64, spacing=12)
+        btn_pickup = Button(text="Pick Up", font_size="16sp",
+                            background_color=(0.2, 0.55, 0.9, 1))
+        btn_pickup.bind(on_press=lambda x: self._hitchhiker_choice('pickup'))
+        btn_pass = Button(text="Pass", font_size="16sp",
+                          background_color=(0.45, 0.45, 0.45, 1))
+        btn_pass.bind(on_press=lambda x: self._hitchhiker_choice('pass'))
+        hitch_btn_row.add_widget(btn_pickup)
+        hitch_btn_row.add_widget(btn_pass)
+        hitch_panel.add_widget(hitch_btn_row)
+        self._hitch_panel = hitch_panel
+
         self._decay_event = Clock.schedule_interval(self._tick_decay, 10)
         self._new_bingo_card()
-        self._rival_event = Clock.schedule_once(self._rival_turn, self._rival_interval())
 
     _OPTION_NAMES = {
-        "1a": "(L1)5 sec ∞ looks",
-        "1b": "(L1)5 sec 2x pnts.",
-        "1c": "(L1)Best next power-up",
-        "1d": "(L1)Next switch free",
-        "1e": "(L1)Double next hold",
-        "2a": "(L2)10 sec ∞ looks",
-        "2b": "(L2)10 sec 2x pnts.",
-        "2c": "(L2)Next hold 2xpnts. for lks.",
-        "2d": "(L2)3x pnts. looking at grass, 5s",
-        "2e": "(L2)Next power-up lvl+1",
-        "3a": "(L3)Flip next C to +20",
-        "3b": "(L3)2× pending now",
-        "3c": "(L3)Roll again",
-        "3d": "(L3)Next A = looks × pnts.", #Should make this xpoints under 50
-        "3e": "(L3)Next hold linear pnts.",
+        "1a": "Infinite Credits (5s)",
+        "1b": "Double Points (5s)",
+        "1c": "Lucky Roll",
+        "1d": "Free Switch",
+        "1e": "Hold Boost",
+        "2a": "Infinite Credits (10s)",
+        "2b": "Double Points (10s)",
+        "2c": "Jackpot Hold",
+        "2d": "Grass Vision (5s)",
+        "2e": "Power Surge",
+        "3a": "Switch Flip",
+        "3b": "Double Down",
+        "3c": "Reroll",
+        "3d": "All In",
+        "3e": "Stack Hold",
     }
 
     # (min_score, tick_interval_seconds) — checked highest-first.
@@ -318,35 +428,34 @@ class MainScreen(Screen):
 
     _REGION_BINGO = {
         'Forest': [
-            "Deer", "Owl", "River", "Squirrel", "Mushrooms", "Waterfall",
-            "Log cabin", "Bear", "Fox", "Pine tree", "Bird nest",
-            "Campfire", "Hiking trail", "Berries", "Creek",
+            "Squirrel", "Creek", "Deer", "Mushrooms", "Bird nest",
+            "Hiking trail", "Log cabin", "Waterfall", "Campfire",
+            "Fox", "Wild turkey", "Owl", "Bear", "Beaver dam", "Deer crossing sign",
         ],
         'Desert': [
-            "Cactus", "Roadrunner", "Lizard", "Tumbleweed", "Sand dunes",
-            "Vulture", "Joshua tree", "Rock formation", "Mesa",
-            "Dust devil", "Dry riverbed", "Oil pump", "Mirage",
-            "Rattlesnake", "Sand storm",
+            "Cactus", "Rock formation", "Sand dunes", "Tumbleweed", "Lizard",
+            "Vulture", "Dry riverbed", "Oil pump", "Roadrunner",
+            "Dust devil", "Joshua tree", "Mirage", "Rattlesnake", "Mesa", "Sand storm",
         ],
         'Mountains': [
-            "Snow peak", "Eagle", "Mountain goat", "Glacier", "Cable car",
-            "Elk", "Waterfall", "Alpine lake", "Cliff", "Ski lodge",
-            "Tunnel", "Switchback", "Avalanche sign", "Mine shaft", "Rockslide",
+            "Snow peak", "Cliff", "Tunnel", "Waterfall", "Switchback",
+            "Ski lodge", "Alpine lake", "Eagle", "Avalanche sign",
+            "Mine shaft", "Mountain goat", "Elk", "Glacier", "Cable car", "Bighorn sheep",
         ],
         'City': [
-            "Skyscraper", "Traffic jam", "Billboard", "City bus", "Police car",
-            "Fire truck", "Taxi", "Construction", "Park", "Food truck",
-            "Graffiti", "Crosswalk", "Bridge", "Subway sign", "Mall",
+            "Police car", "City bus", "Skyscraper", "Graffiti", "Construction",
+            "Traffic jam", "Park", "Bridge", "Food truck",
+            "Taxi", "Subway sign", "Mall", "Street musician", "Police horse", "Rooftop garden",
         ],
         'Coast': [
-            "Lighthouse", "Sailboat", "Pelican", "Beach", "Pier",
-            "Seagull", "Fishing boat", "Waves", "Sea cliffs", "Seafood shack",
-            "Harbor", "Buoy", "Ferry", "Sand castle", "Crab",
+            "Beach", "Seagull", "Waves", "Pier", "Pelican",
+            "Lighthouse", "Sailboat", "Fishing boat", "Seafood shack",
+            "Harbor", "Buoy", "Ferry", "Dolphin", "Osprey", "Crab",
         ],
         'Neighborhood': [
-            "Mailbox", "Dog walker", "Garage sale", "Lawn mower", "Sprinkler",
-            "School bus", "Bicycle", "Skateboard", "Trampoline", "Basketball hoop",
-            "Swing set", "Ice cream truck", "Fire hydrant", "Fence", "Bird feeder",
+            "Dog walker", "Garage sale", "Trampoline", "Basketball hoop", "Swing set",
+            "School bus", "Bicycle", "Sprinkler", "Bird feeder",
+            "Ice cream truck", "Skateboard", "Lawn mower in use", "Tire swing", "Vegetable garden", "Treehouse",
         ],
     }
 
@@ -387,6 +496,76 @@ class MainScreen(Screen):
         ('manticore',   'Manticore',    'Challenge windows 50% longer'),
         ('wendigo',     'Wendigo',      'Bingo gives +10 bonus pts'),
         ('pegasus',     'Pegasus',      'Watch gives 2 credits per tick'),
+    ]
+
+    _TOURISTS = [
+        ("Lost Family",    "A family of four with a wrinkled map, completely turned around"),
+        ("Camera Trekker", "Tourist with camera around neck, snapping absolutely everything"),
+        ("Elderly Couple", "Older travelers searching for the scenic overlook"),
+        ("Backpacker",     "Young backpacker hunting for cheap accommodations nearby"),
+        ("Bus Tour Group", "Enthusiastic tour group pouring off a bus, phones raised"),
+        ("Selfie Seeker",  "Influencer hunting the perfect background for a story"),
+        ("First-Timer",    "Nervous first-time road tripper clutching a fresh guidebook"),
+        ("Bird Watcher",   "Birder with binoculars, mistaking you for a local expert"),
+    ]
+
+    _HITCHHIKERS = [
+        {
+            'id': 'geologist', 'name': 'The Geologist',
+            'desc': 'Points out every interesting rock formation',
+            'effect_desc': '+1 pt per Spot for 30s',
+            'effect': 'bonus_spot', 'duration': 30,
+            'msg': 'Geologist aboard! +1 pt per Spot for 30s',
+        },
+        {
+            'id': 'birdwatcher', 'name': 'The Birdwatcher',
+            'desc': 'Binoculars raised, scanning every tree and wire',
+            'effect_desc': 'Rare encounters ×3 for 30s',
+            'effect': 'rare_boost', 'duration': 30,
+            'msg': 'Birdwatcher aboard! Rare encounters ×3 for 30s',
+        },
+        {
+            'id': 'trucker', 'name': 'Off-Duty Trucker',
+            'desc': 'Knows every stop and shortcut on this stretch',
+            'effect_desc': 'Credits won\'t decay for 45s',
+            'effect': 'no_decay', 'duration': 45,
+            'msg': 'Trucker aboard! Credits won\'t decay for 45s',
+        },
+        {
+            'id': 'dj', 'name': 'The DJ',
+            'desc': 'Brings the perfect road-trip playlist',
+            'effect_desc': 'Double points for 25s',
+            'effect': 'double_pts', 'duration': 25,
+            'msg': 'DJ aboard! Double points for 25s',
+        },
+        {
+            'id': 'navigator', 'name': 'The Navigator',
+            'desc': 'Has every route on this road memorized cold',
+            'effect_desc': 'Auto-marks 2 bingo cells',
+            'effect': 'bingo_mark', 'duration': 0,
+            'msg': 'Navigator! Auto-marked 2 bingo cells',
+        },
+        {
+            'id': 'foodie', 'name': 'The Foodie',
+            'desc': 'Hungry, but stocked with great local tips',
+            'effect_desc': '-15 credits, +20 pts',
+            'effect': 'trade', 'duration': 0,
+            'msg': 'Traded snacks for intel: -15 lks, +20 pts',
+        },
+        {
+            'id': 'sleeper', 'name': 'The Sleeper',
+            'desc': 'Immediately out cold in the back seat',
+            'effect_desc': 'No effect',
+            'effect': 'none', 'duration': 0,
+            'msg': 'Snoring softly... at least they\'re quiet',
+        },
+        {
+            'id': 'conspiracy', 'name': 'Conspiracy Theorist',
+            'desc': 'Has a wild theory about everything you spot',
+            'effect_desc': 'Credits tick 2× faster for 20s',
+            'effect': 'fast_credits', 'duration': 20,
+            'msg': 'Theorist aboard! Credits tick 2× faster for 20s',
+        },
     ]
 
     def _difficulty_score(self):
@@ -436,7 +615,7 @@ class MainScreen(Screen):
         return nlks, npts, mlks, mpts
 
     def _tick_decay(self, dt):
-        if 'yeti' in App.get_running_app().active_badges:
+        if 'yeti' in App.get_running_app().active_badges or self._hitch_effect == 'no_decay':
             return
         s = self._difficulty_score()
         if s >= 1000:
@@ -964,7 +1143,7 @@ class MainScreen(Screen):
             old = self.score_a
             if self._grass_mode and self.grass_switch.active:
                 pts = 3
-            elif self._double_points or self._hold_double_points:
+            elif self._double_points or self._hold_double_points or self._hitch_effect == 'double_pts':
                 pts = 2
             else:
                 pts = 1
@@ -975,6 +1154,8 @@ class MainScreen(Screen):
             if self._albino_deer_active:
                 self._albino_deer_active = False
                 pts *= 2
+            if self._hitch_effect == 'bonus_spot' and pts > 0:
+                pts += 1
             self.score_a += pts
             if self._condition == 'rainy' and 'thunderbird' in App.get_running_app().active_badges and pts > 0:
                 self.score_a += 1
@@ -1107,6 +1288,8 @@ class MainScreen(Screen):
         base = 2 if self._condition == 'rainy' else 1
         if 'pegasus' in App.get_running_app().active_badges:
             base += 1
+        if self._hitch_effect == 'fast_credits':
+            base += 1
         self._pending_b += base
         self._update_d_options()
         self._try_rare_animal()
@@ -1121,7 +1304,9 @@ class MainScreen(Screen):
             self._clock_event, self._double_points_event, self._grass_event,
             self._infinite_looks_event, self._flash_c_event, self._decay_event,
             self._patience_event, self._levelup_reprieve_event, self._rival_event,
-            self._next_flash_event,
+            self._next_flash_event, self._mp_sync_event,
+            self._tourist_event, self._tourist_prompt_event,
+            self._hitchhiker_event, self._hitchhiker_prompt_event, self._hitch_effect_event,
         ]:
             if ev:
                 ev.cancel()
@@ -1133,6 +1318,8 @@ class MainScreen(Screen):
         Clock.unschedule(self._do_flash)
         Clock.unschedule(self._rival_turn)
         Clock.unschedule(self._tick_decay)
+        Clock.unschedule(self._show_tourist)
+        Clock.unschedule(self._show_hitchhiker)
 
         # ── Reset all state ────────────────────────────────────────────────────
         self.score_a = 0
@@ -1185,12 +1372,27 @@ class MainScreen(Screen):
         self._rival_event = None
         self._rival_stolen_cells = set()
         self._rival_skip_remaining = 0
+        self._mp_opponent_score = 0
+        self._mp_sync_event = None
+        app = App.get_running_app()
+        if app.mp_client:
+            app.mp_client.stop()
+            app.mp_client = None
+        app.mp_active = False
         self._golden_cells = set()
         self._alpha_found = 0
         self._coins_earned = 0
         self._next_flash_event = None
         self._dragon_shield_active = False
         self._kirin_counter = 0
+        self._tourist_event = None
+        self._tourist_prompt_event = None
+        self._hitchhiker_event = None
+        self._hitchhiker_prompt_event = None
+        self._hitchhiker_visible = False
+        self._hitch_pending = None
+        self._hitch_effect = None
+        self._hitch_effect_event = None
 
         # ── Reset UI ───────────────────────────────────────────────────────────
         self.label_a.text = "Sightings: 0"
@@ -1199,6 +1401,7 @@ class MainScreen(Screen):
         self.label_best.text = "Best hold: —"
         self.label_region.text = "Region: Forest"
         self.rival_label.text = "Rival: 0"
+        self.rival_label.color = (1, 0.45, 0.45, 1)
         self.btn_a.disabled = True
         self.dropdown_d.values = ()
         self.dropdown_d.text = "Power-ups"
@@ -1220,12 +1423,13 @@ class MainScreen(Screen):
             self._toggle_bingo()
         if self._alpha_visible:
             self._toggle_alpha()
+        self._dismiss_tourist()
+        self._dismiss_hitchhiker()
 
         # ── Restart required timers ────────────────────────────────────────────
         self._new_bingo_card()
         self._decay_event = Clock.schedule_interval(self._tick_decay, 10)
         self._schedule_next_flash()
-        self._rival_event = Clock.schedule_once(self._rival_turn, self._rival_interval())
 
         # Badge cooldown bookkeeping
         app = App.get_running_app()
@@ -1243,6 +1447,14 @@ class MainScreen(Screen):
 
     def on_enter(self):
         app = App.get_running_app()
+        if app.mp_active:
+            self._mp_setup()
+        else:
+            self._rival_event = Clock.schedule_once(self._rival_turn, self._rival_interval())
+            self.rival_label.text = "Rival: 0"
+            self.rival_label.color = (1, 0.45, 0.45, 1)
+            self._schedule_tourist()
+            self._schedule_hitchhiker()
         for key in list(app.pending_upgrades):
             if key == 'credit_boost':
                 self.score_b += 25
@@ -1265,6 +1477,30 @@ class MainScreen(Screen):
         if 'dragon' in app.active_badges:
             self._dragon_shield_active = True
         self._kirin_counter = 0
+
+    # ── Online multiplayer ────────────────────────────────────────────────────
+
+    def _mp_setup(self):
+        app = App.get_running_app()
+        self._mp_opponent_score = 0
+        self.rival_label.text = "Online: 0"
+        self.rival_label.color = (0.4, 0.75, 1, 1)
+        if app.mp_client:
+            app.mp_client.set_message_handler(self._on_mp_message)
+            self._mp_sync_event = Clock.schedule_interval(self._mp_sync, 20)
+
+    def _on_mp_message(self, msg):
+        t = msg.get('t')
+        if t == 'score':
+            self._mp_opponent_score = msg.get('v', 0)
+            self.rival_label.text = f"Online: {self._mp_opponent_score}"
+        elif t == 'event':
+            self._show_flash_once((0.4, 0.75, 1, 1), f"They got: {msg.get('msg', '')}")
+
+    def _mp_sync(self, dt=None):
+        app = App.get_running_app()
+        if app.mp_client:
+            app.mp_client.send(t='score', v=self.score_a)
 
     def _update_coins(self):
         divisor = 15 if 'unicorn' in App.get_running_app().active_badges else 25
@@ -1359,6 +1595,7 @@ class MainScreen(Screen):
                 self._check_level_thresholds(old)
                 msg = f"GOLDEN BINGO! +{reward} pts!" if golden else f"BINGO! +{reward} pts!"
                 self._show_flash_once((1, 0.82, 0, 1) if golden else (1, 1, 0, 1), msg)
+                self._mp_sync()
                 Clock.schedule_once(lambda dt: self._new_bingo_card(), 2.0)
                 if golden_in_line == 2:
                     Clock.schedule_once(lambda dt: self._award_badge(), 2.2)
@@ -1470,6 +1707,8 @@ class MainScreen(Screen):
 
     def _try_rare_animal(self):
         threshold = 0.005 if 'bigfoot' in App.get_running_app().active_badges else 0.015
+        if self._hitch_effect == 'rare_boost':
+            threshold /= 3
         if random.random() > threshold:
             return
         choice = random.choice(('dhole', 'albino', 'mothman'))
@@ -1506,6 +1745,146 @@ class MainScreen(Screen):
         self.label_b.text = f"Credits: {self.score_b}"
         self.btn_a.disabled = self.score_b < 1
         self._show_flash_once((1, 0.2, 0.2, 1), "Mothman lied! -40 pts")
+
+    # ── Tourist Mode ──────────────────────────────────────────────────────────
+
+    def _schedule_tourist(self):
+        delay = random.uniform(100, 150)
+        self._tourist_event = Clock.schedule_once(self._show_tourist, delay)
+
+    def _show_tourist(self, dt):
+        self._tourist_event = None
+        name, desc = random.choice(self._TOURISTS)
+        self._tourist_name_label.text = f"Tourist: {name}"
+        self._tourist_desc_label.text = desc
+        self._tourist_visible = True
+        self.add_widget(self._tourist_panel, index=1)
+        self._tourist_prompt_event = Clock.schedule_once(self._tourist_timeout, 12)
+
+    def _tourist_timeout(self, dt):
+        self._tourist_prompt_event = None
+        self._dismiss_tourist()
+        old = self.score_a
+        self.score_a += 3
+        self.label_a.text = f"Sightings: {self.score_a}"
+        self._check_level_thresholds(old)
+        self._show_flash_once((0.5, 0.5, 0.5, 1), "Tourist wandered off... +3 pts")
+        self._schedule_tourist()
+
+    def _dismiss_tourist(self):
+        if self._tourist_visible:
+            self.remove_widget(self._tourist_panel)
+            self._tourist_visible = False
+
+    def _tourist_choice(self, choice):
+        if not self._tourist_visible:
+            return
+        if self._tourist_prompt_event:
+            self._tourist_prompt_event.cancel()
+            self._tourist_prompt_event = None
+        self._dismiss_tourist()
+        old = self.score_a
+        if choice == 'guide':
+            self.score_a += 15
+            self.label_a.text = f"Sightings: {self.score_a}"
+            self._check_level_thresholds(old)
+            self._show_flash_once((0.2, 0.8, 0.2, 1), "Tourist guided! +15 pts")
+        elif choice == 'ignore':
+            self.score_a += 3
+            self.label_a.text = f"Sightings: {self.score_a}"
+            self._check_level_thresholds(old)
+            self._show_flash_once((0.6, 0.6, 0.6, 1), "Stayed focused. +3 pts")
+        else:
+            if random.random() < 0.6:
+                self.score_a += 30
+                self.label_a.text = f"Sightings: {self.score_a}"
+                self._check_level_thresholds(old)
+                self._show_flash_once((1, 0.55, 0, 1), "Scam worked! +30 pts")
+            else:
+                floor = 5 if 'phoenix' in App.get_running_app().active_badges else 0
+                self.score_a = max(floor, self.score_a - 20)
+                self.label_a.text = f"Sightings: {self.score_a}"
+                self._show_flash_once((1, 0.2, 0.2, 1), "Karma got you! -20 pts")
+        self._schedule_tourist()
+
+    # ── Hitchhikers ───────────────────────────────────────────────────────────
+
+    def _schedule_hitchhiker(self):
+        delay = random.uniform(60, 120)
+        self._hitchhiker_event = Clock.schedule_once(self._show_hitchhiker, delay)
+
+    def _show_hitchhiker(self, dt):
+        self._hitchhiker_event = None
+        hitch = random.choice(self._HITCHHIKERS)
+        self._hitch_pending = hitch
+        self._hitch_name_label.text = f"Hitchhiker: {hitch['name']}"
+        self._hitch_desc_label.text = hitch['desc']
+        self._hitch_effect_label.text = hitch['effect_desc']
+        self._hitchhiker_visible = True
+        self.add_widget(self._hitch_panel, index=1)
+        self._hitchhiker_prompt_event = Clock.schedule_once(self._hitchhiker_timeout, 10)
+
+    def _hitchhiker_timeout(self, dt):
+        self._hitchhiker_prompt_event = None
+        self._dismiss_hitchhiker()
+        self._show_flash_once((0.4, 0.4, 0.6, 1), "Hitchhiker left behind...")
+        self._schedule_hitchhiker()
+
+    def _dismiss_hitchhiker(self):
+        if self._hitchhiker_visible:
+            self.remove_widget(self._hitch_panel)
+            self._hitchhiker_visible = False
+
+    def _hitchhiker_choice(self, choice):
+        if not self._hitchhiker_visible:
+            return
+        if self._hitchhiker_prompt_event:
+            self._hitchhiker_prompt_event.cancel()
+            self._hitchhiker_prompt_event = None
+        hitch = self._hitch_pending
+        self._dismiss_hitchhiker()
+        if choice == 'pass':
+            self._show_flash_once((0.4, 0.4, 0.6, 1), f"Passed on {hitch['name']}...")
+        else:
+            self._apply_hitchhiker_effect(hitch)
+        self._schedule_hitchhiker()
+
+    def _apply_hitchhiker_effect(self, hitch):
+        self._show_flash_once((0.5, 0.8, 1, 1), hitch['msg'])
+        effect = hitch['effect']
+        if effect == 'none':
+            return
+        if effect == 'bingo_mark':
+            available = [
+                i for i in range(9)
+                if not self._bingo_marked[i] and i not in self._rival_stolen_cells
+            ]
+            for idx in random.sample(available, min(2, len(available))):
+                self._bingo_marked[idx] = True
+                self._check_bingo()
+            self._update_bingo_ui()
+            return
+        if effect == 'trade':
+            self.score_b = max(0, self.score_b - 15)
+            self.label_b.text = f"Credits: {self.score_b}"
+            self.btn_a.disabled = self.score_b < 1
+            old = self.score_a
+            self.score_a += 20
+            self.label_a.text = f"Sightings: {self.score_a}"
+            self._check_level_thresholds(old)
+            return
+        # Timed effects — cancel any existing hitchhiker effect first.
+        if self._hitch_effect_event:
+            self._hitch_effect_event.cancel()
+        self._hitch_effect = effect
+        self._hitch_effect_event = Clock.schedule_once(
+            self._expire_hitchhiker_effect, hitch['duration']
+        )
+
+    def _expire_hitchhiker_effect(self, dt):
+        self._hitch_effect = None
+        self._hitch_effect_event = None
+        self._show_flash_once((0.4, 0.5, 0.6, 1), "Hitchhiker dropped off.")
 
     # ── Rival Spotter ─────────────────────────────────────────────────────────
 
@@ -1592,13 +1971,20 @@ class MainScreen(Screen):
             self.btn_a.disabled = self.score_b < 1
             self._show_flash_once((1, 0.25, 0.5, 1), f"Rival blocked your view! -{amt} lks")
         else:
-            region = self._region
-            if region == 'Forest':
-                penaltysteals = random.choice(("Binoculars", "Hiking Pole", "Bug Spray", "Raingear"))
+            _REGION_STEALS = {
+                'Forest':       ("Binoculars", "Hiking Pole", "Bug Spray", "Raingear"),
+                'Desert':       ("Water Bottle", "Sunscreen", "Sun Hat", "GPS Device"),
+                'Mountains':    ("Trail Map", "Trekking Poles", "Climbing Gloves", "Altitude Inhaler"),
+                'City':         ("Transit Card", "Guidebook", "Umbrella", "Phone Charger"),
+                'Coast':        ("Binoculars", "Fishing Rod", "Waterproof Bag", "Sunscreen"),
+                'Neighborhood': ("Notebook", "Snacks", "Folding Chair", "Sunglasses"),
+            }
+            pool = _REGION_STEALS.get(self._region, ("Gear",))
+            penaltysteals = random.choice(pool)
             self.score_a = max(floor, self.score_a - 15)
             self.score_b = max(0, self.score_b - 10)
             self.label_a.text = f"Sightings: {self.score_a}"
             self.label_b.text = f"Credits: {self.score_b}"
             self.btn_a.disabled = self.score_b < 1
-            self._show_flash_once((1, 0.25, 0.5, 1), f"Rival stole your {penaltysteals} -10/-6")
+            self._show_flash_once((1, 0.25, 0.5, 1), f"Rival stole your {penaltysteals}! -15/-10")
 

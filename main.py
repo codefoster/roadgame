@@ -5,6 +5,7 @@ from kivy.app import App
 from kivy.uix.screenmanager import ScreenManager
 
 from src.screens.start_screen import StartScreen
+from src.screens.lobby_screen import LobbyScreen
 from src.screens.main_screen import MainScreen
 
 
@@ -14,11 +15,15 @@ class RoadGameApp(App):
     badges = set()
     active_badges = set()       # badges selected for the current game (max 5)
     badge_cooldowns = {}        # {badge_id: games_remaining_on_cooldown}
+    mp_client = None            # RelayClient while a multiplayer session is live
+    mp_active = False           # True when entering main screen via online play
+    mp_role = None              # 'host' or 'guest'
 
     def build(self):
         self._load_state()
         sm = ScreenManager()
         sm.add_widget(StartScreen(name="start"))
+        sm.add_widget(LobbyScreen(name="lobby"))
         sm.add_widget(MainScreen(name="main"))
         return sm
 
@@ -49,10 +54,12 @@ class RoadGameApp(App):
 
     def on_pause(self):
         self.save_state()
-        return True  # returning True allows the app to resume on Android
+        return True
 
     def on_stop(self):
         self.save_state()
+        if self.mp_client:
+            self.mp_client.stop()
 
 
 if __name__ == "__main__":
