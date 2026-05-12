@@ -1,4 +1,5 @@
 import random
+import time
 
 from kivy.app import App
 from kivy.uix.screenmanager import Screen
@@ -87,6 +88,11 @@ class MainScreen(Screen):
         self._hitch_pending = None          # hitchhiker dict currently shown
         self._hitch_effect = None           # active timed effect string or None
         self._hitch_effect_event = None     # Clock event for effect expiry
+        self._patrol_active = False         # True while pulled over by Highway Patrol
+        self._patrol_event = None           # Clock event for patrol release
+        self._a_press_times = []            # monotonic timestamps of recent Spot presses
+        self._c_press_times = []            # monotonic timestamps of recent Switch presses
+        self._d_use_times = []              # monotonic timestamps of recent power-up uses
         self._rival_score = 0
         self._rival_event = None
         self._rival_stolen_cells = set()
@@ -568,6 +574,16 @@ class MainScreen(Screen):
         },
     ]
 
+    # Probability that detected aggression actually triggers a patrol stop, per region.
+    _PATROL_PROB = {
+        'City':         1.0,
+        'Neighborhood': 0.55,
+        'Mountains':    0.25,
+        'Forest':       0.12,
+        'Coast':        0.12,
+        'Desert':       0.0,
+    }
+
     def _difficulty_score(self):
         if self._locked_thresholds:
             return max(self.score_a, max(self._locked_thresholds))
@@ -802,6 +818,7 @@ class MainScreen(Screen):
     def _toggle_category(self):
         self._category = "Man-made" if self._category == "Nature" else "Nature"
         self.label_cat.text = f"Category: {self._category}"
+        self._record_aggression('switch')
         if self._challenge and self._challenge['type'] == 'switch':
             self._challenge['progress'] += 1
             if self._challenge['progress'] >= self._challenge['target']:
@@ -1014,6 +1031,7 @@ class MainScreen(Screen):
         self.dropdown_d.text = "Power-ups"
         self._cancel_powerup_expiry(value)
         self._activate_powerup(value)
+        self._record_aggression('powerup')
 
     def _reroll_top_powerup(self):
         values = list(self.dropdown_d.values)
@@ -1174,6 +1192,7 @@ class MainScreen(Screen):
                 self._complete_challenge()
         self._schedule_patience()
         self._update_coins()
+        self._record_aggression('spot')
 
     def _press_a(self, instance):
         # A "spends" one banked Look to award one Point (two while 1b is active).
@@ -1307,6 +1326,7 @@ class MainScreen(Screen):
             self._next_flash_event, self._mp_sync_event,
             self._tourist_event, self._tourist_prompt_event,
             self._hitchhiker_event, self._hitchhiker_prompt_event, self._hitch_effect_event,
+            self._patrol_event,
         ]:
             if ev:
                 ev.cancel()
@@ -1393,6 +1413,11 @@ class MainScreen(Screen):
         self._hitch_pending = None
         self._hitch_effect = None
         self._hitch_effect_event = None
+        self._patrol_active = False
+        self._patrol_event = None
+        self._a_press_times = []
+        self._c_press_times = []
+        self._d_use_times = []
 
         # ── Reset UI ───────────────────────────────────────────────────────────
         self.label_a.text = "Sightings: 0"
@@ -1885,6 +1910,57 @@ class MainScreen(Screen):
         self._hitch_effect = None
         self._hitch_effect_event = None
         self._show_flash_once((0.4, 0.5, 0.6, 1), "Hitchhiker dropped off.")
+
+    # ── Highway Patrol ────────────────────────────────────────────────────────
+
+    def _record_aggression(self, kind):
+        """Track a press/use and trigger patrol if the window threshold is crossed."""
+        if self._patrol_active:
+            return
+        now = time.monotonic()
+        if kind == 'spot':
+            self._a_press_times = [t for t in self._a_press_times if now - t < 3.0]
+            self._a_press_times.append(now)
+            triggered = len(self._a_press_times) >= 4
+            reason = "speeding"
+        elif kind == 'switch':
+            self._c_press_times = [t for t in self._c_press_times if now - t < 5.0]
+            self._c_press_times.append(now)
+            triggered = len(self._c_press_times) >= 3
+            reason = "erratic driving"
+        else:  # 'powerup'
+            self._d_use_times = [t for t in self._d_use_times if now - t < 8.0]
+            self._d_use_times.append(now)
+            triggered = len(self._d_use_times) >= 3
+            reason = "license check"
+        if not triggered:
+            return
+        # Clear the window so the same burst doesn't re-trigger immediately.
+        if kind == 'spot':
+            self._a_press_times.clear()
+        elif kind == 'switch':
+            self._c_press_times.clear()
+        else:
+            self._d_use_times.clear()
+        prob = self._PATROL_PROB.get(self._region, 0.12)
+        if prob == 0 or random.random() > prob:
+            return
+        self._trigger_patrol(reason)
+
+    def _trigger_patrol(self, reason):
+        self._patrol_active = True
+        floor = 5 if 'phoenix' in App.get_running_app().active_badges else 0
+        self.score_a = max(floor, self.score_a - 15)
+        self.label_a.text = f"Sightings: {self.score_a}"
+        self.btn_a.disabled = True
+        self._show_flash_once((0.25, 0.25, 1, 1), f"Highway Patrol! {reason} — -15 pts, 20s hold")
+        self._patrol_event = Clock.schedule_once(self._release_patrol, 20)
+
+    def _release_patrol(self, dt):
+        self._patrol_active = False
+        self._patrol_event = None
+        self.btn_a.disabled = self.score_b < 1
+        self._show_flash_once((0.4, 0.6, 1, 1), "Highway Patrol cleared — drive safely!")
 
     # ── Rival Spotter ─────────────────────────────────────────────────────────
 
