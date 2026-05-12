@@ -1,5 +1,6 @@
 import random
 
+from kivy.app import App
 from kivy.uix.screenmanager import Screen
 from kivy.uix.boxlayout import BoxLayout
 from kivy.uix.gridlayout import GridLayout
@@ -62,10 +63,24 @@ class MainScreen(Screen):
         self._levelup_reprieved = set()        # thresholds already offered a reprieve (no second chance)
         self._condition = 'sunny'
         self._rainy_a_counter = 0
+        self._locked_thresholds = set()
         self._bingo_card = []
         self._bingo_marked = [False] * 9
         self._bingo_buttons = []
         self._bingo_visible = False
+        self._albino_deer_active = False
+        self._region = 'Forest'
+        self._golden_cells = set()
+        self._alpha_found = 0       # index of next letter needed (0=A … 26=complete)
+        self._alpha_visible = False
+        self._coins_earned = 0      # coins awarded from score_a this session
+        self._rival_skip_remaining = 0  # turns rival skips actions (Rival Chill upgrade)
+        self._next_flash_event = None   # handle for the pending _do_flash schedule
+        self._dragon_shield_active = False  # True if dragon badge owned and not yet used
+        self._kirin_counter = 0             # counts A presses for Kirin 10th-press bonus
+        self._rival_score = 0
+        self._rival_event = None
+        self._rival_stolen_cells = set()
 
         with self.canvas.before:
             self._flash_color = Color(0, 0, 0, 0)
@@ -75,24 +90,39 @@ class MainScreen(Screen):
 
         layout = BoxLayout(orientation="vertical", padding=40, spacing=20)
 
-        # Control row: condition selector, bingo toggle.
+        # Control row: condition selector, region selector, bingo toggle, alpha toggle.
         control_row = BoxLayout(size_hint=(1, None), height=44, spacing=6)
         self.spinner_condition = Spinner(
             text="Sunny",
             values=("Sunny", "Rainy", "Foggy", "Night"),
             font_size="15sp",
-            size_hint_x=0.4,
+            size_hint_x=0.22,
         )
         self.spinner_condition.bind(text=self._on_condition_select)
         control_row.add_widget(self.spinner_condition)
+        self.spinner_region = Spinner(
+            text="Forest",
+            values=("Forest", "Desert", "Mountains", "City", "Coast", "Neighborhood"),
+            font_size="15sp",
+            size_hint_x=0.33,
+        )
+        self.spinner_region.bind(text=self._on_region_select)
+        control_row.add_widget(self.spinner_region)
         self.btn_bingo = Button(text="Bingo", font_size="15sp")
         self.btn_bingo.bind(on_press=lambda x: self._toggle_bingo())
         control_row.add_widget(self.btn_bingo)
+        self.btn_alpha = Button(text="A-Z", font_size="15sp")
+        self.btn_alpha.bind(on_press=lambda x: self._toggle_alpha())
+        control_row.add_widget(self.btn_alpha)
         layout.add_widget(control_row)
 
         # Power-ups dropdown row.
-        top_row = BoxLayout(size_hint=(1, None), height=50)
-        top_row.add_widget(Label())
+        top_row = BoxLayout(size_hint=(1, None), height=50, spacing=6)
+        btn_exit = Button(text="Menu", font_size="15sp", size_hint=(None, 1), width=75)
+        btn_exit.bind(on_press=lambda x: self._go_to_menu())
+        top_row.add_widget(btn_exit)
+        self.rival_label = Label(text="Rival: 0", font_size="18sp", color=(1, 0.45, 0.45, 1))
+        top_row.add_widget(self.rival_label)
         self.dropdown_d = Spinner(
             text="Power-ups",
             values=(),
@@ -108,6 +138,7 @@ class MainScreen(Screen):
         self.label_b = Label(text="Credits: 0", font_size="48sp")
         self.label_cat = Label(text="Category: Nature", font_size="24sp")
         self.label_best = Label(text="Best hold: —", font_size="18sp")
+        self.label_region = Label(text="Region: Forest", font_size="18sp", color=(0.4, 1, 0.6, 1))
 
         # C button on left (above A), switch on right (above B)
         switch_c_layout = BoxLayout(spacing=20, size_hint=(1, 0.6))
@@ -139,6 +170,7 @@ class MainScreen(Screen):
         layout.add_widget(self.label_a)
         layout.add_widget(self.label_b)
         layout.add_widget(self.label_cat)
+        layout.add_widget(self.label_region)
         layout.add_widget(self.label_best)
         layout.add_widget(switch_c_layout)
         layout.add_widget(self.grass_row)
@@ -175,6 +207,9 @@ class MainScreen(Screen):
         )
         bingo_hdr = BoxLayout(size_hint=(1, None), height=38, spacing=8)
         bingo_hdr.add_widget(Label(text="BINGO", font_size="20sp", bold=True))
+        btn_reset_bingo = Button(text="Reset (-30 pts)", size_hint=(None, 1), width=145, font_size="13sp")
+        btn_reset_bingo.bind(on_press=lambda x: self._bingo_reset())
+        bingo_hdr.add_widget(btn_reset_bingo)
         btn_close_bingo = Button(text="Close", size_hint=(None, 1), width=80, font_size="14sp")
         btn_close_bingo.bind(on_press=lambda x: self._toggle_bingo())
         bingo_hdr.add_widget(btn_close_bingo)
@@ -191,8 +226,45 @@ class MainScreen(Screen):
         # Panel is NOT added to the widget tree until the user opens it,
         # because a disabled Kivy widget still consumes touches in its bounds.
 
+        # Alphabet Hunt overlay — hidden until toggled.
+        alpha_panel = BoxLayout(
+            orientation='vertical',
+            pos_hint={'center_x': 0.5, 'center_y': 0.45},
+            size_hint=(0.95, 0.52),
+            padding=8, spacing=6,
+        )
+        with alpha_panel.canvas.before:
+            Color(0.12, 0.12, 0.12, 0.96)
+            _alpha_bg = Rectangle(pos=alpha_panel.pos, size=alpha_panel.size)
+        alpha_panel.bind(
+            pos=lambda w, v: setattr(_alpha_bg, 'pos', v),
+            size=lambda w, v: setattr(_alpha_bg, 'size', v),
+        )
+        alpha_hdr = BoxLayout(size_hint=(1, None), height=38, spacing=8)
+        alpha_hdr.add_widget(Label(text="Alphabet Hunt", font_size="20sp", bold=True))
+        btn_close_alpha = Button(text="Close", size_hint=(None, 1), width=80, font_size="14sp")
+        btn_close_alpha.bind(on_press=lambda x: self._toggle_alpha())
+        alpha_hdr.add_widget(btn_close_alpha)
+        alpha_panel.add_widget(alpha_hdr)
+        alpha_action = BoxLayout(size_hint=(1, None), height=60, spacing=10)
+        self._alpha_target_label = Label(text="Find: A", font_size="30sp", bold=True,
+                                         color=(1, 0.85, 0, 1))
+        self._alpha_found_btn = Button(text="Found it!", font_size="20sp")
+        self._alpha_found_btn.bind(on_press=lambda x: self._alpha_mark_found())
+        alpha_action.add_widget(self._alpha_target_label)
+        alpha_action.add_widget(self._alpha_found_btn)
+        alpha_panel.add_widget(alpha_action)
+        self._alpha_display = Label(
+            text=self._alpha_markup(),
+            markup=True,
+            font_size="20sp",
+        )
+        alpha_panel.add_widget(self._alpha_display)
+        self._alpha_panel = alpha_panel
+
         self._decay_event = Clock.schedule_interval(self._tick_decay, 10)
         self._new_bingo_card()
+        self._rival_event = Clock.schedule_once(self._rival_turn, self._rival_interval())
 
     _OPTION_NAMES = {
         "1a": "(L1)5 sec ∞ looks",
@@ -234,46 +306,155 @@ class MainScreen(Screen):
         "Motorcycle", "Fast food", "Fire truck", "Tractor",
     ]
 
+    _GOLDEN_BINGO_ITEMS = [
+        "Bald eagle", "Hot air balloon", "Moose", "Covered bridge",
+        "Steam locomotive", "Blimp", "Crop duster", "Military convoy",
+        "Double rainbow", "Drive-in theater", "Alpaca farm", "Vintage car (pre-60s)",
+        "Wild turkey", "Peacock", "Working windmill", "Monarch butterflies",
+        "Horse-drawn carriage", "Movie crew filming", "Pink car", "Roadside waterfall",
+    ]
+
+    _REGIONS = ('Forest', 'Desert', 'Mountains', 'City', 'Coast', 'Neighborhood')
+
+    _REGION_BINGO = {
+        'Forest': [
+            "Deer", "Owl", "River", "Squirrel", "Mushrooms", "Waterfall",
+            "Log cabin", "Bear", "Fox", "Pine tree", "Bird nest",
+            "Campfire", "Hiking trail", "Berries", "Creek",
+        ],
+        'Desert': [
+            "Cactus", "Roadrunner", "Lizard", "Tumbleweed", "Sand dunes",
+            "Vulture", "Joshua tree", "Rock formation", "Mesa",
+            "Dust devil", "Dry riverbed", "Oil pump", "Mirage",
+            "Rattlesnake", "Sand storm",
+        ],
+        'Mountains': [
+            "Snow peak", "Eagle", "Mountain goat", "Glacier", "Cable car",
+            "Elk", "Waterfall", "Alpine lake", "Cliff", "Ski lodge",
+            "Tunnel", "Switchback", "Avalanche sign", "Mine shaft", "Rockslide",
+        ],
+        'City': [
+            "Skyscraper", "Traffic jam", "Billboard", "City bus", "Police car",
+            "Fire truck", "Taxi", "Construction", "Park", "Food truck",
+            "Graffiti", "Crosswalk", "Bridge", "Subway sign", "Mall",
+        ],
+        'Coast': [
+            "Lighthouse", "Sailboat", "Pelican", "Beach", "Pier",
+            "Seagull", "Fishing boat", "Waves", "Sea cliffs", "Seafood shack",
+            "Harbor", "Buoy", "Ferry", "Sand castle", "Crab",
+        ],
+        'Neighborhood': [
+            "Mailbox", "Dog walker", "Garage sale", "Lawn mower", "Sprinkler",
+            "School bus", "Bicycle", "Skateboard", "Trampoline", "Basketball hoop",
+            "Swing set", "Ice cream truck", "Fire hydrant", "Fence", "Bird feeder",
+        ],
+    }
+
+    # Weights for power-up sub-letters a-e indexed 0-4, per region.
+    _REGION_POWERUP_WEIGHTS = {
+        'Forest':    [3, 1, 1, 1, 1],  # 'a' infinite looks favored
+        'Desert':    [1, 3, 1, 1, 1],  # 'b' double points favored
+        'Mountains': [1, 1, 3, 1, 1],  # 'c' roll-again favored
+        'City':      [1, 1, 1, 3, 1],  # 'd' free switch favored
+        'Coast':        [1, 1, 1, 1, 3],  # 'e' double-hold / linear favored
+        'Neighborhood': [1, 1, 1, 3, 1],  # 'd' free switch favored — familiar territory
+    }
+
+    _REGION_WEATHER_HINT = {
+        'Forest': 'Rainy', 'Desert': 'Sunny',
+        'Mountains': 'Foggy', 'City': 'Sunny', 'Coast': 'Rainy',
+        'Neighborhood': 'Sunny',
+    }
+
+    _BADGES = [
+        ('bigfoot',     'Bigfoot',      'Rare animal chance ×3'),
+        ('phoenix',     'Phoenix',      'Score never drops below 5'),
+        ('unicorn',     'Unicorn',      'Earn a coin every 15 pts'),
+        ('kraken',      'Kraken',       'Rival earns 1 fewer pt per turn'),
+        ('yeti',        'Yeti',         'Credits never decay'),
+        ('dragon',      'Dragon',       'First flash penalty each game blocked'),
+        ('leprechaun',  'Leprechaun',   'Shop items cost 3 fewer coins'),
+        ('mermaid',     'Mermaid',      'Patience bonus +10 pts instead of +5'),
+        ('sphinx',      'Sphinx',       'Power-ups always one tier higher'),
+        ('centaur',     'Centaur',      'Watch is 0.5 s faster per tick'),
+        ('griffin',     'Griffin',      'Rare animal rewards doubled'),
+        ('basilisk',    'Basilisk',     'Rival frozen for 20 turns when badge earned'),
+        ('selkie',      'Selkie',       'Switch penalty halved'),
+        ('thunderbird', 'Thunderbird',  'Rainy weather: +1 pt per spot'),
+        ('nessie',      'Nessie',       'Patience bonus every 20 s'),
+        ('banshee',     'Banshee',      'Flash penalties 30% smaller'),
+        ('kirin',       'Kirin',        'Every 10th spot gives 3× points'),
+        ('manticore',   'Manticore',    'Challenge windows 50% longer'),
+        ('wendigo',     'Wendigo',      'Bingo gives +10 bonus pts'),
+        ('pegasus',     'Pegasus',      'Watch gives 2 credits per tick'),
+    ]
+
+    def _difficulty_score(self):
+        if self._locked_thresholds:
+            return max(self.score_a, max(self._locked_thresholds))
+        return self.score_a
+
     def _b_interval(self):
+        s = self._difficulty_score()
         for threshold, interval in self._DIFFICULTY_STEPS:
-            if self.score_a >= threshold:
-                return interval
-        return 1.0
+            if s >= threshold:
+                base = interval
+                break
+        else:
+            base = 1.0
+        if 'centaur' in App.get_running_app().active_badges:
+            base = max(0.5, base - 0.5)
+        return base
 
     def _c_penalty(self):
-        if self.score_a >= 1000:
-            return 50
-        elif self.score_a >= 800:
-            return 40
-        elif self.score_a >= 500:
-            return 30
-        return 20
+        s = self._difficulty_score()
+        if s >= 1000:
+            penalty = 50
+        elif s >= 800:
+            penalty = 40
+        elif s >= 500:
+            penalty = 30
+        else:
+            penalty = 20
+        if 'selkie' in App.get_running_app().active_badges:
+            penalty = max(1, penalty // 2)
+        return penalty
 
     def _flash_penalties(self):
         """Returns (nature_lks, nature_pts, manmade_lks, manmade_pts) for the current score tier."""
-        if self.score_a >= 1000:
-            return 30, 40, 40, 30
-        elif self.score_a >= 800:
-            return 25, 40, 40, 25
-        elif self.score_a >= 500:
-            return 15, 30, 30, 15
-        return 10, 25, 25, 10
+        s = self._difficulty_score()
+        if s >= 1000:
+            nlks, npts, mlks, mpts = 30, 40, 40, 30
+        elif s >= 800:
+            nlks, npts, mlks, mpts = 25, 40, 40, 25
+        elif s >= 500:
+            nlks, npts, mlks, mpts = 15, 30, 30, 15
+        else:
+            nlks, npts, mlks, mpts = 10, 25, 25, 10
+        if 'banshee' in App.get_running_app().active_badges:
+            nlks, npts, mlks, mpts = int(nlks*0.7), int(npts*0.7), int(mlks*0.7), int(mpts*0.7)
+        return nlks, npts, mlks, mpts
 
     def _tick_decay(self, dt):
-        if self.score_a >= 1000:
+        if 'yeti' in App.get_running_app().active_badges:
+            return
+        s = self._difficulty_score()
+        if s >= 1000:
             if self.score_b <= 45:
                 return
             amount = 2
-        elif self.score_a >= 800:
+        elif s >= 800:
             if self.score_b <= 100:
                 return
             amount = 2
-        elif self.score_a >= 500:
+        elif s >= 500:
             if self.score_b <= 150:
                 return
             amount = 1
         else:
             return
+        if self._region == 'Desert':
+            amount += 1
         self.score_b = max(0, self.score_b - amount)
         if self._pending_b:
             self.label_b.text = f"Credits: {self.score_b} (+{self._pending_b})"
@@ -282,9 +463,10 @@ class MainScreen(Screen):
         self.btn_a.disabled = self.score_b < 1
 
     def _powerup_expiry_time(self):
-        if self.score_a >= 1000:
+        s = self._difficulty_score()
+        if s >= 1000:
             return 180
-        elif self.score_a >= 800:
+        elif s >= 800:
             return 300
         return None
 
@@ -312,15 +494,19 @@ class MainScreen(Screen):
     def _check_level_thresholds(self, old_score):
         for t in self._LEVEL_THRESHOLDS:
             if old_score < t <= self.score_a:
+                if t in self._locked_thresholds:
+                    break  # already locked, don't re-announce
                 if self._levelup_reprieve_window:
-                    break  # already in a reprieve window, skip
+                    break
                 if t not in self._levelup_reprieved:
                     self._offer_levelup_reprieve(t)
                 else:
-                    self._do_level_up_flash()
+                    self._do_level_up_flash(t)
                 break
 
-    def _do_level_up_flash(self):
+    def _do_level_up_flash(self, threshold=None):
+        if threshold is not None:
+            self._locked_thresholds.add(threshold)
         if self._level_flash_busy:
             return
         self._level_flash_busy = True
@@ -347,12 +533,13 @@ class MainScreen(Screen):
         self._levelup_reprieve_event = Clock.schedule_once(self._levelup_reprieve_expired, 5)
 
     def _levelup_reprieve_expired(self, dt):
+        t = self._levelup_reprieve_threshold
         self._levelup_reprieve_window = False
         self._levelup_reprieve_threshold = None
         self._levelup_reprieve_event = None
         self._flash_color.rgba = (0, 0, 0, 0)
         self.flash_label.text = ""
-        self._do_level_up_flash()
+        self._do_level_up_flash(t)
 
     def _update_flash_rect(self, *args):
         self._flash_rect.pos = self.pos
@@ -361,11 +548,11 @@ class MainScreen(Screen):
     def _schedule_next_flash(self):
         if self._condition == 'night':
             delay = random.uniform(8, 25)
-        elif self.score_a >= 800:
+        elif self._difficulty_score() >= 800:
             delay = random.uniform(15, 45)
         else:
             delay = random.uniform(30, 90)
-        Clock.schedule_once(self._do_flash, delay)
+        self._next_flash_event = Clock.schedule_once(self._do_flash, delay)
 
     def _do_flash(self, dt):
         nlks, npts, mlks, mpts = self._flash_penalties()
@@ -381,7 +568,7 @@ class MainScreen(Screen):
             ((0.4, 1, 0.4, 1), "Challenge: Earn an L2+ power-up!"),
             ((1, 0.2, 0.8, 1), "Challenge: Switch 2× in 30s!"),
         ]
-        weights = [1, 1, 1, 1, 2, 1, 1, 1, 1] if self.score_a >= 800 else [1, 1, 1, 1, 1, 1, 1, 1, 1]
+        weights = self._region_flash_weights()
         color, text = random.choices(options, weights=weights)[0]
         self._run_flash(color, text, flashes_remaining=3)
 
@@ -392,20 +579,30 @@ class MainScreen(Screen):
                 self._start_flash_c_window()
             elif text.startswith("Nature: -"):
                 if self._category == "Nature":
-                    nlks, npts, _, _ = self._flash_penalties()
-                    self.score_b = max(0, self.score_b - nlks)
-                    self.score_a = max(0, self.score_a - npts)
-                    self.label_b.text = f"Credits: {self.score_b}"
-                    self.label_a.text = f"Sightings: {self.score_a}"
-                    self.btn_a.disabled = self.score_b < 1
+                    if self._dragon_shield_active:
+                        self._dragon_shield_active = False
+                        self._show_flash_once((1, 0.5, 0.1, 1), "Dragon blocked the penalty!")
+                    else:
+                        nlks, npts, _, _ = self._flash_penalties()
+                        floor = 5 if 'phoenix' in App.get_running_app().active_badges else 0
+                        self.score_b = max(0, self.score_b - nlks)
+                        self.score_a = max(floor, self.score_a - npts)
+                        self.label_b.text = f"Credits: {self.score_b}"
+                        self.label_a.text = f"Sightings: {self.score_a}"
+                        self.btn_a.disabled = self.score_b < 1
             elif text.startswith("Man-made: -"):
                 if self._category == "Man-made":
-                    _, _, mlks, mpts = self._flash_penalties()
-                    self.score_b = max(0, self.score_b - mlks)
-                    self.score_a = max(0, self.score_a - mpts)
-                    self.label_b.text = f"Credits: {self.score_b}"
-                    self.label_a.text = f"Sightings: {self.score_a}"
-                    self.btn_a.disabled = self.score_b < 1
+                    if self._dragon_shield_active:
+                        self._dragon_shield_active = False
+                        self._show_flash_once((1, 0.5, 0.1, 1), "Dragon blocked the penalty!")
+                    else:
+                        _, _, mlks, mpts = self._flash_penalties()
+                        floor = 5 if 'phoenix' in App.get_running_app().active_badges else 0
+                        self.score_b = max(0, self.score_b - mlks)
+                        self.score_a = max(floor, self.score_a - mpts)
+                        self.label_b.text = f"Credits: {self.score_b}"
+                        self.label_a.text = f"Sightings: {self.score_a}"
+                        self.btn_a.disabled = self.score_b < 1
             elif text == "Next 10 lks: switch cat.":
                 self._forced_c_remaining = 10
             elif text == "Power-up stolen!":
@@ -438,7 +635,8 @@ class MainScreen(Screen):
     def _flash_c_penalty(self, dt):
         self._flash_c_window = False
         self._flash_c_event = None
-        self.score_a = max(0, self.score_a - self._c_penalty())
+        floor = 5 if 'phoenix' in App.get_running_app().active_badges else 0
+        self.score_a = max(floor, self.score_a - self._c_penalty())
         self.label_a.text = f"Sightings: {self.score_a}"
 
     def _flash_pause(self, color, text, flashes_remaining):
@@ -469,6 +667,8 @@ class MainScreen(Screen):
             self._start_challenge('switch', target=2, window_sec=30, reward_pts=15, reward_lks=0)
 
     def _start_challenge(self, ctype, target, window_sec, reward_pts, reward_lks):
+        if 'manticore' in App.get_running_app().active_badges:
+            window_sec = int(window_sec * 1.5)
         self._challenge = {
             'type': ctype,
             'target': target,
@@ -503,18 +703,21 @@ class MainScreen(Screen):
         if self._patience_event:
             self._patience_event.cancel()
         if self.score_b > 0:
-            self._patience_event = Clock.schedule_once(self._give_patience_bonus, 30)
+            delay = 20 if 'nessie' in App.get_running_app().active_badges else 30
+            self._patience_event = Clock.schedule_once(self._give_patience_bonus, delay)
 
     def _give_patience_bonus(self, dt):
         self._patience_event = None
         if self.score_b < 1:
             return
         old = self.score_a
-        self.score_a += 5
+        bonus = 10 if 'mermaid' in App.get_running_app().active_badges else 5
+        self.score_a += bonus
         self.label_a.text = f"Sightings: {self.score_a}"
         self._check_level_thresholds(old)
-        self._show_flash_once((0.6, 0.8, 1, 1), "Patience +5 pts!")
-        self._patience_event = Clock.schedule_once(self._give_patience_bonus, 30)
+        self._show_flash_once((0.6, 0.8, 1, 1), f"Patience +{bonus} pts!")
+        delay = 20 if 'nessie' in App.get_running_app().active_badges else 30
+        self._patience_event = Clock.schedule_once(self._give_patience_bonus, delay)
 
     def _commit_b(self):
         # Bank pending credits. Per-hold flags (linear mode, hold 2x) are cleared
@@ -551,6 +754,8 @@ class MainScreen(Screen):
             tier = 1
         else:
             return
+        if 'sphinx' in App.get_running_app().active_badges:
+            tier = min(3, tier + 1)
         force_sub_e = self._force_sub_e
         if self._next_powerup_level_up:
             # Re-applied on every tier upgrade within the run; consumed when the run ends.
@@ -568,7 +773,8 @@ class MainScreen(Screen):
             sub = "e"
             self._force_sub_e = False
         else:
-            sub = random.choice("abcde")
+            rw = self._REGION_POWERUP_WEIGHTS.get(self._region, [1, 1, 1, 1, 1])
+            sub = random.choices("abcde", weights=rw)[0]
         key = f"{tier}{sub}"
         name = self._OPTION_NAMES.get(key, f"Option {key}")
         if self._run_option is not None:
@@ -766,7 +972,16 @@ class MainScreen(Screen):
                 self._rainy_a_counter += 1
                 if self._rainy_a_counter % 2 == 0:
                     pts = 0
+            if self._albino_deer_active:
+                self._albino_deer_active = False
+                pts *= 2
             self.score_a += pts
+            if self._condition == 'rainy' and 'thunderbird' in App.get_running_app().active_badges and pts > 0:
+                self.score_a += 1
+            if 'kirin' in App.get_running_app().active_badges:
+                self._kirin_counter += 1
+                if self._kirin_counter % 10 == 0:
+                    self.score_a += pts * 2  # already added pts once, so add 2× more = 3× total
             self.label_a.text = f"Sightings: {self.score_a}"
             self._check_level_thresholds(old)
             self.score_b = max(0, self.score_b - 1)
@@ -777,12 +992,14 @@ class MainScreen(Screen):
             if self._challenge['progress'] >= self._challenge['target']:
                 self._complete_challenge()
         self._schedule_patience()
+        self._update_coins()
 
     def _press_a(self, instance):
         # A "spends" one banked Look to award one Point (two while 1b is active).
         if self._forced_c_remaining > 0:
             self._forced_c_remaining -= 1
-            self.score_a = max(0, self.score_a - 5)
+            floor = 5 if 'phoenix' in App.get_running_app().active_badges else 0
+            self.score_a = max(floor, self.score_a - 5)
             self.label_a.text = f"Sightings: {self.score_a}"
             return
         if self._next_ac_keep_b:
@@ -835,7 +1052,7 @@ class MainScreen(Screen):
                 self._levelup_reprieved.add(t)
                 self._show_flash_once((0, 0.8, 1, 1), "Level-up delayed! -20 pts")
             else:
-                self._do_level_up_flash()
+                self._do_level_up_flash(t)
             return
         # C always acts as A (awards a point, spends a look), plus its own effect.
         if self._flash_c_window:
@@ -871,7 +1088,8 @@ class MainScreen(Screen):
             self._next_ac_keep_b = False
         else:
             self._reset_b_timer()
-        self.score_a = max(0, self.score_a - self._c_penalty())
+        floor = 5 if 'phoenix' in App.get_running_app().active_badges else 0
+        self.score_a = max(floor, self.score_a - self._c_penalty())
         self.label_a.text = f"Sightings: {self.score_a}"
         self._toggle_category()
         if self.score_b >= 1:
@@ -886,27 +1104,218 @@ class MainScreen(Screen):
             self._check_level_thresholds(old)
             return
         # Clock callback: adds one Look per tick to the pending buffer.
-        self._pending_b += 2 if self._condition == 'rainy' else 1
+        base = 2 if self._condition == 'rainy' else 1
+        if 'pegasus' in App.get_running_app().active_badges:
+            base += 1
+        self._pending_b += base
         self._update_d_options()
+        self._try_rare_animal()
         self.label_b.text = f"Credits: {self.score_b} (+{self._pending_b})"
         if self._challenge and self._challenge['type'] == 'watch':
             if self._pending_b >= self._challenge['target']:
                 self._complete_challenge()
 
+    def _go_to_menu(self):
+        # ── Cancel every active Clock event ───────────────────────────────────
+        for ev in [
+            self._clock_event, self._double_points_event, self._grass_event,
+            self._infinite_looks_event, self._flash_c_event, self._decay_event,
+            self._patience_event, self._levelup_reprieve_event, self._rival_event,
+            self._next_flash_event,
+        ]:
+            if ev:
+                ev.cancel()
+        for ev in self._powerup_expiry_events.values():
+            ev.cancel()
+        if self._challenge:
+            self._challenge['deadline_event'].cancel()
+        # Belt-and-suspenders for the self-rescheduling callbacks.
+        Clock.unschedule(self._do_flash)
+        Clock.unschedule(self._rival_turn)
+        Clock.unschedule(self._tick_decay)
+
+        # ── Reset all state ────────────────────────────────────────────────────
+        self.score_a = 0
+        self.score_b = 0
+        self._pending_b = 0
+        self._clock_event = None
+        self._toggle_mode = False
+        self._run_tier = 0
+        self._run_option = None
+        self._double_points_event = None
+        self._grass_event = None
+        self._infinite_looks_event = None
+        self._powerup_ticks_left = 0
+        self._pre_powerup_score_b = 0
+        self._double_points = False
+        self._force_sub_e = False
+        self._next_c_free = False
+        self._next_ac_keep_b = False
+        self._next_hold_2x = False
+        self._hold_double_points = False
+        self._grass_mode = False
+        self._next_powerup_level_up = False
+        self._level_up_used_this_run = False
+        self._next_hold_linear = False
+        self._linear_mode = False
+        self._linear_press_count = 0
+        self._next_a_multiply = False
+        self._next_c_flip = False
+        self._flash_c_window = False
+        self._flash_c_event = None
+        self._category = "Nature"
+        self._forced_c_remaining = 0
+        self._powerup_expiry_events = {}
+        self._decay_event = None
+        self._level_flash_busy = False
+        self._challenge = None
+        self._best_hold = 0
+        self._patience_event = None
+        self._levelup_reprieve_window = False
+        self._levelup_reprieve_threshold = None
+        self._levelup_reprieve_event = None
+        self._levelup_reprieved = set()
+        self._condition = 'sunny'
+        self._rainy_a_counter = 0
+        self._locked_thresholds = set()
+        self._bingo_marked = [False] * 9
+        self._albino_deer_active = False
+        self._region = 'Forest'
+        self._rival_score = 0
+        self._rival_event = None
+        self._rival_stolen_cells = set()
+        self._rival_skip_remaining = 0
+        self._golden_cells = set()
+        self._alpha_found = 0
+        self._coins_earned = 0
+        self._next_flash_event = None
+        self._dragon_shield_active = False
+        self._kirin_counter = 0
+
+        # ── Reset UI ───────────────────────────────────────────────────────────
+        self.label_a.text = "Sightings: 0"
+        self.label_b.text = "Credits: 0"
+        self.label_cat.text = "Category: Nature"
+        self.label_best.text = "Best hold: —"
+        self.label_region.text = "Region: Forest"
+        self.rival_label.text = "Rival: 0"
+        self.btn_a.disabled = True
+        self.dropdown_d.values = ()
+        self.dropdown_d.text = "Power-ups"
+        self.dropdown_d.disabled = False
+        self._flash_color.rgba = (0, 0, 0, 0)
+        self.flash_label.text = ""
+        self.btn_b.background_color = (1, 1, 1, 255)
+        self.grass_row.height = 0
+        self.grass_switch.active = False
+        self.toggle_switch.active = False   # _on_switch guard: _clock_event already None
+        self.spinner_condition.text = "Sunny"
+        self.spinner_region.text = "Forest"
+        self._alpha_target_label.text = "Find: A"
+        self._alpha_found_btn.disabled = False
+        self._alpha_display.text = self._alpha_markup()
+
+        # ── Close any open overlays ────────────────────────────────────────────
+        if self._bingo_visible:
+            self._toggle_bingo()
+        if self._alpha_visible:
+            self._toggle_alpha()
+
+        # ── Restart required timers ────────────────────────────────────────────
+        self._new_bingo_card()
+        self._decay_event = Clock.schedule_interval(self._tick_decay, 10)
+        self._schedule_next_flash()
+        self._rival_event = Clock.schedule_once(self._rival_turn, self._rival_interval())
+
+        # Badge cooldown bookkeeping
+        app = App.get_running_app()
+        for badge_id in list(app.badge_cooldowns.keys()):
+            if badge_id not in app.active_badges:
+                app.badge_cooldowns[badge_id] -= 1
+                if app.badge_cooldowns[badge_id] <= 0:
+                    del app.badge_cooldowns[badge_id]
+        for badge_id in app.active_badges:
+            app.badge_cooldowns[badge_id] = 3
+        app.active_badges.clear()
+
+        self.manager.current = 'start'
+
+    def on_enter(self):
+        app = App.get_running_app()
+        for key in list(app.pending_upgrades):
+            if key == 'credit_boost':
+                self.score_b += 25
+                self.label_b.text = f"Credits: {self.score_b}"
+                self.btn_a.disabled = self.score_b < 1
+            elif key == 'head_start':
+                old = self.score_a
+                self.score_a += 50
+                self.label_a.text = f"Sightings: {self.score_a}"
+                self._check_level_thresholds(old)
+            elif key == 'rival_chill':
+                self._rival_skip_remaining += 5
+            elif key == 'golden_touch':
+                for cell in sorted(self._golden_cells):
+                    if cell not in self._rival_stolen_cells and not self._bingo_marked[cell]:
+                        self._bingo_marked[cell] = True
+                self._update_bingo_ui()
+        app.pending_upgrades.clear()
+        # Activate badge effects that need to be set at game start
+        if 'dragon' in app.active_badges:
+            self._dragon_shield_active = True
+        self._kirin_counter = 0
+
+    def _update_coins(self):
+        divisor = 15 if 'unicorn' in App.get_running_app().active_badges else 25
+        should_have = self.score_a // divisor
+        if should_have > self._coins_earned:
+            App.get_running_app().coins += should_have - self._coins_earned
+            self._coins_earned = should_have
+
     def _on_condition_select(self, instance, value):
         self._condition = value.lower()
 
+    def _on_region_select(self, instance, value):
+        if value == self._region:
+            return
+        self._region = value
+        self.label_region.text = f"Region: {value}"
+        self._new_bingo_card()
+
     # ── Bingo ─────────────────────────────────────────────────────────────────
 
+    def _bingo_reset(self):
+        if self.score_a < 30:
+            self._show_flash_once((1, 0.3, 0.3, 1), "Need 30 pts to reset bingo!")
+            return
+        self.score_a -= 30
+        self.label_a.text = f"Sightings: {self.score_a}"
+        self._new_bingo_card()
+        self._show_flash_once((0.4, 0.8, 1, 1), "Bingo card reset! -30 pts")
+
     def _new_bingo_card(self):
-        self._bingo_card = random.sample(self._BINGO_ITEMS, 9)
+        pool = self._REGION_BINGO.get(self._region, self._BINGO_ITEMS)
+        self._bingo_card = random.sample(pool, 9)
         self._bingo_marked = [False] * 9
+        self._rival_stolen_cells.clear()
+        count = random.choices([1, 2, 3], weights=[55, 35, 10])[0]
+        self._golden_cells = set(random.sample(range(9), count))
+        golden_items = random.sample(self._GOLDEN_BINGO_ITEMS, len(self._golden_cells))
+        for cell, item in zip(sorted(self._golden_cells), golden_items):
+            self._bingo_card[cell] = item
         self._update_bingo_ui()
 
     def _update_bingo_ui(self):
         for i, btn in enumerate(self._bingo_buttons):
             btn.text = self._bingo_card[i] if i < len(self._bingo_card) else "?"
-            btn.background_color = (0.2, 0.75, 0.2, 1) if self._bingo_marked[i] else (1, 1, 1, 1)
+            if self._bingo_marked[i]:
+                btn.background_color = (0.2, 0.75, 0.2, 1)
+            elif i in self._rival_stolen_cells:
+                btn.background_color = (0.65, 0.15, 0.15, 1)
+            elif i in self._golden_cells:
+                btn.background_color = (1, 0.82, 0, 1)
+            else:
+                btn.background_color = (1, 1, 1, 1)
 
     def _toggle_bingo(self, *args):
         self._bingo_visible = not self._bingo_visible
@@ -916,9 +1325,17 @@ class MainScreen(Screen):
             self.remove_widget(self._bingo_panel)
 
     def _mark_bingo_cell(self, idx):
+        if idx in self._rival_stolen_cells:
+            return
         self._bingo_marked[idx] = not self._bingo_marked[idx]
         self._update_bingo_ui()
         if self._bingo_marked[idx]:
+            if idx in self._golden_cells:
+                old = self.score_a
+                self.score_a += 5
+                self.label_a.text = f"Sightings: {self.score_a}"
+                self._check_level_thresholds(old)
+                self._show_flash_once((1, 0.82, 0, 1), "Golden square! +5 pts")
             self._check_bingo()
 
     def _check_bingo(self):
@@ -930,11 +1347,256 @@ class MainScreen(Screen):
         ]
         for line in lines:
             if all(m[i] for i in line):
+                golden = any(i in self._golden_cells for i in line)
+                golden_in_line = sum(1 for i in line if i in self._golden_cells)
+                reward = 50 if golden else 25
                 old = self.score_a
-                self.score_a += 25
+                self.score_a += reward
+                if 'wendigo' in App.get_running_app().active_badges:
+                    self.score_a += 10
                 self.label_a.text = f"Sightings: {self.score_a}"
                 self._check_level_thresholds(old)
-                self._show_flash_once((1, 1, 0, 1), "BINGO! +25 pts!")
+                msg = f"GOLDEN BINGO! +{reward} pts!" if golden else f"BINGO! +{reward} pts!"
+                self._show_flash_once((1, 0.82, 0, 1) if golden else (1, 1, 0, 1), msg)
                 Clock.schedule_once(lambda dt: self._new_bingo_card(), 2.0)
+                if golden_in_line == 2:
+                    Clock.schedule_once(lambda dt: self._award_badge(), 2.2)
                 break
+
+    def _award_badge(self):
+        app = App.get_running_app()
+        unearned = [b for b in self._BADGES if b[0] not in app.badges]
+        if not unearned:
+            old = self.score_a
+            self.score_a += 200
+            self.label_a.text = f"Sightings: {self.score_a}"
+            self._check_level_thresholds(old)
+            self._show_flash_once((1, 0.82, 0, 1), "All badges collected! +200 pts!")
+            return
+        badge_id, name, desc = random.choice(unearned)
+        app.badges.add(badge_id)
+        self._flash_color.rgba = (0.6, 0.2, 1, 1)
+        self.flash_label.text = f"Badge: {name}!"
+        Clock.schedule_once(self._clear_flash_once, 2.0)
+        Clock.schedule_once(lambda dt: self._show_flash_once((0.6, 0.2, 1, 1), desc), 2.2)
+        # Immediate badge effects
+        if badge_id == 'dragon':
+            self._dragon_shield_active = True
+        elif badge_id == 'basilisk':
+            self._rival_skip_remaining += 20
+
+    # ── Alphabet Hunt ─────────────────────────────────────────────────────────
+
+    def _alpha_markup(self):
+        parts = []
+        for i, letter in enumerate('ABCDEFGHIJKLMNOPQRSTUVWXYZ'):
+            if i < self._alpha_found:
+                parts.append(f"[color=33cc33]{letter}[/color]")
+            elif i == self._alpha_found:
+                parts.append(f"[color=ffcc00]{letter}[/color]")
+            else:
+                parts.append(f"[color=666666]{letter}[/color]")
+        return "  ".join(parts)
+
+    def _toggle_alpha(self, *args):
+        self._alpha_visible = not self._alpha_visible
+        if self._alpha_visible:
+            self.add_widget(self._alpha_panel, index=1)
+        else:
+            self.remove_widget(self._alpha_panel)
+
+    def _alpha_mark_found(self):
+        if self._alpha_found >= 26:
+            return
+        letter = chr(ord('A') + self._alpha_found)
+        self._alpha_found += 1
+        if self._alpha_found >= 26:
+            self._alpha_target_label.text = "Complete!"
+            self._alpha_found_btn.disabled = True
+            self._alpha_display.text = self._alpha_markup()
+            old = self.score_a
+            self.score_a += 100
+            self.label_a.text = f"Sightings: {self.score_a}"
+            self._check_level_thresholds(old)
+            self._show_flash_once((1, 0.82, 0, 1), "A to Z complete! +100 pts!")
+            Clock.schedule_once(lambda dt: self._alpha_reset(dt), 3.0)
+        else:
+            next_letter = chr(ord('A') + self._alpha_found)
+            self._alpha_target_label.text = f"Find: {next_letter}"
+            self._alpha_display.text = self._alpha_markup()
+            if letter == 'Q':
+                old = self.score_a
+                self.score_a += 20
+                self.label_a.text = f"Sightings: {self.score_a}"
+                self._check_level_thresholds(old)
+                self._show_flash_once((0.5, 0.85, 1, 1), "Found Q! Rare! +20 pts")
+            else:
+                self._show_flash_once((0.5, 0.85, 1, 1), f"Found {letter}! Next: {next_letter}")
+
+    def _alpha_reset(self, dt):
+        self._alpha_found = 0
+        self._alpha_target_label.text = "Find: A"
+        self._alpha_found_btn.disabled = False
+        self._alpha_display.text = self._alpha_markup()
+
+    # ── Traveling Regions ─────────────────────────────────────────────────────
+
+    def _region_flash_weights(self):
+        # Indices: Switch!, Nature-, Man-made-, Next10lks, Stolen, Ch:Spot, Ch:Watch, Ch:L2, Ch:Switch
+        w = [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
+        if self._difficulty_score() >= 800:
+            w[4] = 2.0
+        region = self._region
+        if region == 'Forest':
+            w[1] = 0.4   # Nature penalty less likely — you're in your element
+            w[5] = 2.0   # more Spot challenges
+        elif region == 'Desert':
+            w[0] = 2.0   # Switch! more likely — harsh conditions
+            w[4] += 1.0  # more power-up stolen
+        elif region == 'Mountains':
+            w[6] = 2.0   # more Watch challenges
+            w[7] = 2.0   # more L2 power-up challenges
+        elif region == 'City':
+            w[2] = 0.4   # Man-made penalty less likely — familiar territory
+            w[8] = 2.0   # more Switch challenges
+        elif region == 'Coast':
+            w[3] = 2.0   # more "next 10 lks: switch cat"
+            w[6] = 2.0   # more Watch challenges
+        return w
+
+    # ── Rare Animal Encounters ────────────────────────────────────────────────
+
+    def _try_rare_animal(self):
+        threshold = 0.005 if 'bigfoot' in App.get_running_app().active_badges else 0.015
+        if random.random() > threshold:
+            return
+        choice = random.choice(('dhole', 'albino', 'mothman'))
+        if choice == 'dhole':
+            dhole_reward = 100 if 'griffin' in App.get_running_app().active_badges else 50
+            old = self.score_a
+            self.score_a += dhole_reward
+            self.label_a.text = f"Sightings: {self.score_a}"
+            self._check_level_thresholds(old)
+            self._show_flash_once((1, 0.75, 0.1, 1), f"Dhole spotted! +{dhole_reward}")
+        elif choice == 'albino':
+            self._albino_deer_active = True
+            self._show_flash_once((0.85, 0.95, 1, 1), "Albino deer! 2x next spot")
+        else:
+            self._show_flash_once((0.7, 0.5, 0.25, 1), "Mothman?!")
+            if random.random() < 0.5:
+                Clock.schedule_once(lambda dt: self._mothman_reward(dt), 1.2)
+            else:
+                Clock.schedule_once(lambda dt: self._mothman_penalty(dt), 1.2)
+
+    def _mothman_reward(self, dt):
+        reward = 200 if 'griffin' in App.get_running_app().active_badges else 100
+        old = self.score_a
+        self.score_a += reward
+        self.label_a.text = f"Sightings: {self.score_a}"
+        self._check_level_thresholds(old)
+        self._show_flash_once((0, 1, 0.3, 1), f"Mothman omen! +{reward}")
+
+    def _mothman_penalty(self, dt):
+        floor = 5 if 'phoenix' in App.get_running_app().active_badges else 0
+        self.score_a = max(floor, self.score_a - 30)
+        self.score_b = max(0, self.score_b - 15)
+        self.label_a.text = f"Sightings: {self.score_a}"
+        self.label_b.text = f"Credits: {self.score_b}"
+        self.btn_a.disabled = self.score_b < 1
+        self._show_flash_once((1, 0.2, 0.2, 1), "Mothman lied! -40 pts")
+
+    # ── Rival Spotter ─────────────────────────────────────────────────────────
+
+    def _rival_interval(self):
+        gap = self.score_a - self._rival_score
+        if gap > 200:
+            return 1.5
+        elif gap > 100:
+            return 3.0
+        elif gap > 0:
+            return 4.5
+        else:
+            return 7.0
+
+    def _rival_action_probs(self):
+        # Returns (p_steal_bingo, p_race_challenge, p_trigger_penalty)
+        gap = self.score_a - self._rival_score
+        if gap > 200:
+            return 0.50, 0.60, 0.45
+        elif gap > 100:
+            return 0.35, 0.45, 0.35
+        elif gap > 0:
+            return 0.25, 0.35, 0.25
+        else:
+            return 0.15, 0.25, 0.15
+
+    def _rival_turn(self, dt):
+        gap = self.score_a - self._rival_score
+        pts = 4 if gap > 200 else 3 if gap > 100 else 2 if gap > 0 else 1
+        if 'kraken' in App.get_running_app().active_badges:
+            pts = max(1, pts - 1)
+        self._rival_score += pts
+        self.rival_label.text = f"Rival: {self._rival_score}"
+
+        if self._rival_skip_remaining > 0:
+            self._rival_skip_remaining -= 1
+            self._rival_event = Clock.schedule_once(self._rival_turn, self._rival_interval())
+            return
+
+        p_steal, p_challenge, p_penalty = self._rival_action_probs()
+        roll = random.random()
+        if roll < p_steal:
+            self._rival_steal_bingo()
+        elif roll < p_steal + p_challenge:
+            self._rival_race_challenge()
+        elif roll < p_steal + p_challenge + p_penalty:
+            self._rival_trigger_penalty()
+
+        self._rival_event = Clock.schedule_once(self._rival_turn, self._rival_interval())
+
+    def _rival_steal_bingo(self):
+        available = [
+            i for i in range(9)
+            if not self._bingo_marked[i] and i not in self._rival_stolen_cells
+        ]
+        if not available:
+            return
+        idx = random.choice(available)
+        self._rival_stolen_cells.add(idx)
+        self._update_bingo_ui()
+        item = self._bingo_card[idx] if idx < len(self._bingo_card) else "?"
+        self._show_flash_once((1, 0.35, 0.35, 1), f"Rival spotted: {item}!")
+
+    def _rival_race_challenge(self):
+        if self._challenge is None:
+            return
+        ch = self._challenge
+        self._challenge = None
+        ch['deadline_event'].cancel()
+        self._show_flash_once((1, 0.45, 0.1, 1), "Rival beat the challenge!")
+
+    def _rival_trigger_penalty(self):
+        kind = random.choice(('pts', 'lks', 'both'))
+        floor = 5 if 'phoenix' in App.get_running_app().active_badges else 0
+        if kind == 'pts':
+            amt = random.choice((20, 25, 30))
+            self.score_a = max(floor, self.score_a - amt)
+            self.label_a.text = f"Sightings: {self.score_a}"
+            self._show_flash_once((1, 0.25, 0.5, 1), f"Rival distracted you! -{amt} pts")
+        elif kind == 'lks':
+            amt = random.choice((10, 15, 18))
+            self.score_b = max(0, self.score_b - amt)
+            self.label_b.text = f"Credits: {self.score_b}"
+            self.btn_a.disabled = self.score_b < 1
+            self._show_flash_once((1, 0.25, 0.5, 1), f"Rival blocked your view! -{amt} lks")
+        else:
+            region = self._region
+            if region == 'Forest':
+                penaltysteals = random.choice(("Binoculars", "Hiking Pole", "Bug Spray", "Raingear"))
+            self.score_a = max(floor, self.score_a - 15)
+            self.score_b = max(0, self.score_b - 10)
+            self.label_a.text = f"Sightings: {self.score_a}"
+            self.label_b.text = f"Credits: {self.score_b}"
+            self.btn_a.disabled = self.score_b < 1
+            self._show_flash_once((1, 0.25, 0.5, 1), f"Rival stole your {penaltysteals} -10/-6")
 
