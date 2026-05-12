@@ -1237,6 +1237,7 @@ class MainScreen(Screen):
         for badge_id in app.active_badges:
             app.badge_cooldowns[badge_id] = 3
         app.active_badges.clear()
+        app.save_state()
 
         self.manager.current = 'start'
 
@@ -1375,6 +1376,7 @@ class MainScreen(Screen):
             return
         badge_id, name, desc = random.choice(unearned)
         app.badges.add(badge_id)
+        app.save_state()
         self._flash_color.rgba = (0.6, 0.2, 1, 1)
         self.flash_label.text = f"Badge: {name}!"
         Clock.schedule_once(self._clear_flash_once, 2.0)
@@ -1522,17 +1524,17 @@ class MainScreen(Screen):
         # Returns (p_steal_bingo, p_race_challenge, p_trigger_penalty)
         gap = self.score_a - self._rival_score
         if gap > 200:
-            return 0.50, 0.60, 0.45
+            return 0.20, 0.22, 0.16
         elif gap > 100:
-            return 0.35, 0.45, 0.35
+            return 0.14, 0.16, 0.12
         elif gap > 0:
-            return 0.25, 0.35, 0.25
+            return 0.09, 0.12, 0.08
         else:
-            return 0.15, 0.25, 0.15
+            return 0.05, 0.08, 0.05
 
     def _rival_turn(self, dt):
         gap = self.score_a - self._rival_score
-        pts = 4 if gap > 200 else 3 if gap > 100 else 2 if gap > 0 else 1
+        pts = 15 if gap > 200 else 10 if gap > 100 else 5 if gap > 0 else 2
         if 'kraken' in App.get_running_app().active_badges:
             pts = max(1, pts - 1)
         self._rival_score += pts
