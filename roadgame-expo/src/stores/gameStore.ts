@@ -209,6 +209,11 @@ export const useGameStore = create<GameState & GameActions>((set, get) => ({
     const scoreB = purchases.includes('credit_boost') ? 25 : 0;
     const rivalSkipCount = purchases.includes('rival_chill') ? 5 : 0;
 
+    const bingoMarked = new Array(9).fill(false) as boolean[];
+    if (purchases.includes('golden_touch')) {
+      goldenTiles.slice(0, 2).forEach(idx => { bingoMarked[idx] = true; });
+    }
+
     set({
       scoreA, scoreB, pendingB: 0, stackHoldCount: 0,
       bWatching: false, toggleMode: 'tap',
@@ -223,7 +228,7 @@ export const useGameStore = create<GameState & GameActions>((set, get) => ({
       flashVisible: false, flashText: '', flashColor: '#fff',
       flashChallenge: null,
       switchFlashActive: false, switchFlashDeadline: 0,
-      bingoCard, bingoMarked: new Array(9).fill(false),
+      bingoCard, bingoMarked,
       goldenTiles, bingoDone: false,
       alphaFound: new Array(26).fill(false), alphaVisible: false,
       touristVisible: false, touristId: null,
