@@ -332,7 +332,7 @@ export default function GameScreen() {
   function checkCoinsFromScore(pts: number) {
     if (pts <= 0) return;
     const threshold = hasBadge(activeBadges, 'unicorn')
-      ? Math.max(4, 10 - badgeLevel(persist.badgeLevels, 'unicorn') * 2)
+      ? 15 - badgeLevel(persist.badgeLevels, 'unicorn') * 3
       : 25;
     coinAccRef.current += pts;
     const earned = Math.floor(coinAccRef.current / threshold);
