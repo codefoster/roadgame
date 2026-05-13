@@ -224,6 +224,7 @@ export function rivalAction(
 
 const REGION_PATROL_CHANCE: Record<Region, number> = {
   city:         1.0,
+  highway:      0.80,
   neighborhood: 0.55,
   mountains:    0.25,
   forest:       0.12,

@@ -206,6 +206,14 @@ export default function GameScreen() {
 
     store.commitPendingB();
 
+    // Salamander: bonus pts from pending credits
+    if (hasBadge(activeBadges, 'salamander')) {
+      const level = badgeLevel(persist.badgeLevels, 'salamander');
+      const ratio = [0.10, 0.20, 0.30, 0.40][level] ?? 0.10;
+      const bonus = Math.floor(pending * ratio);
+      if (bonus > 0) store.addScoreA(bonus);
+    }
+
     // Challenge progress: watch_credits completion check
     if (store.flashChallenge?.type === 'watch_credits') {
       const ch = store.flashChallenge;
@@ -359,8 +367,14 @@ export default function GameScreen() {
     switch (chosen) {
       case 'steal': {
         if (store.powerups.length > 0) {
-          store.removePowerup(store.powerups[0]);
-          doFlash('Power-up stolen!', '#aa44ff');
+          const coyoteLevel = hasBadge(activeBadges, 'coyote') ? badgeLevel(persist.badgeLevels, 'coyote') : -1;
+          const blockChance = coyoteLevel >= 0 ? ([0.25, 0.40, 0.55, 0.70][coyoteLevel] ?? 0.25) : 0;
+          if (Math.random() < blockChance) {
+            doFlash('Steal blocked! (Coyote)', '#aa44ff');
+          } else {
+            store.removePowerup(store.powerups[0]);
+            doFlash('Power-up stolen!', '#aa44ff');
+          }
         } else {
           doFlash('Steal attempt (empty)', '#aa44ff');
         }

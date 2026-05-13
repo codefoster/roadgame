@@ -1,4 +1,4 @@
-export const REGIONS = ['forest', 'desert', 'mountains', 'city', 'coast', 'neighborhood'] as const;
+export const REGIONS = ['forest', 'desert', 'mountains', 'city', 'coast', 'neighborhood', 'highway'] as const;
 export type Region = typeof REGIONS[number];
 
 export const WEATHER = ['sunny', 'rainy', 'foggy', 'overcast', 'night'] as const;
@@ -12,6 +12,7 @@ export const REGION_WEATHER_HINT: Record<Region, Weather> = {
   city: 'sunny',
   coast: 'sunny',
   neighborhood: 'sunny',
+  highway: 'sunny',
 };
 
 export const DIFFICULTY_THRESHOLDS = [200, 500, 800, 1000] as const;
@@ -37,10 +38,10 @@ export const BADGES: BadgeDef[] = [
   { id: 'centaur',     name: 'Centaur',     description: 'Watch tick: 0.3/0.5/0.7s faster by level' },
   { id: 'griffin',     name: 'Griffin',     description: '15–30% chance per spot of free credit' },
   { id: 'basilisk',    name: 'Basilisk',    description: 'Freeze rival 20/25/30/35 turns at game start' },
-  { id: 'selkie',      name: 'Selkie',      description: 'Switch penalty −10/20/35/50% by level' },
+  { id: 'coyote',      name: 'Coyote',      description: 'Steal flash: 25/40/55/70% chance to block theft by level' },
   { id: 'thunderbird', name: 'Thunderbird', description: 'Rainy: +2/4/5/7 pts per spot by level' },
   { id: 'nessie',      name: 'Nessie',      description: '+1/2/3/4 pts each time Watch is committed' },
-  { id: 'banshee',     name: 'Banshee',     description: 'Flash penalties −20/30/40/50% by level' },
+  { id: 'salamander',  name: 'Salamander',  description: 'Watch commit: 10/20/30/40% of pending credits added as pts by level' },
   { id: 'kirin',       name: 'Kirin',       description: 'Every 10/8/6/5th spot: 3× pts by level' },
   { id: 'manticore',   name: 'Manticore',   description: 'Challenge windows ×1.3/1.5/1.7/2.0 by level' },
   { id: 'wendigo',     name: 'Wendigo',     description: 'Bingo: +20/25/30/40 pts by level' },
@@ -84,6 +85,7 @@ export const REGION_POWERUP_WEIGHTS: Record<Region, number[]> = {
   city:         [2, 2, 2, 2, 2],
   coast:        [2, 2, 1, 3, 2],
   neighborhood: [2, 2, 3, 1, 2],
+  highway:      [2, 3, 2, 2, 1],
 };
 
 // ─── Bingo ───────────────────────────────────────────────────────────────────
@@ -110,6 +112,7 @@ export const BINGO_REGIONS: Record<Region, string[]> = {
   city:         ['Police car', 'Skyscraper', 'Graffiti', 'Food truck', 'Bike lane', 'Subway entrance', 'Rooftop garden', 'Fire hydrant', 'Busker', 'City park', 'Taxi', 'Street market', 'Public art', 'Bus stop', 'Parking garage'],
   coast:        ['Beach', 'Seagull', 'Waves', 'Lighthouse', 'Pier', 'Surfer', 'Pelican', 'Crab', 'Sailboat', 'Sea cave', 'Tide pool', 'Dune grass', 'Sea stack', 'Ferry', 'Boardwalk'],
   neighborhood: ['Dog walker', 'Garage sale', 'Trampoline', 'Sprinkler', 'Ice cream truck', 'Lemonade stand', 'Tree swing', 'Garden gnome', 'Basketball hoop', 'Mailbox', 'Fire pit', 'Hammock', 'Bird bath', 'Flower garden', 'Riding mower'],
+  highway:      ['Overpass', 'RV', 'Car hauler', 'Construction zone', 'Runaway truck ramp', 'Convoy', 'Hitchhiker', 'Broken down car', 'Road gator', 'Tow truck', 'Welcome sign', 'Digital speed sign', 'Emergency vehicle', 'Lane closure', 'Median wildflowers'],
 };
 
 // Bingo line patterns (indices in 3×3 grid)
