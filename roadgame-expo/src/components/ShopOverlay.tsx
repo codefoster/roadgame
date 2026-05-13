@@ -11,7 +11,7 @@ interface Props {
 }
 
 export default function ShopOverlay({ visible, onClose, purchases, onPurchase }: Props) {
-  const { coins, spendCoins, badges, badgeLevels } = usePersistentStore();
+  const { coins, spendCoins, badges, badgeLevels, cbRadioGamesLeft, purchaseCbRadio } = usePersistentStore();
   const hasLeprechaun = badges.includes('leprechaun');
   const lepLevel = badgeLevels['leprechaun'] ?? 0;
   const lepDiscount = hasLeprechaun ? 3 + lepLevel * 2 : 0;
@@ -28,22 +28,28 @@ export default function ShopOverlay({ visible, onClose, purchases, onPurchase }:
             {SHOP_ITEMS.map(item => {
               const cost = Math.max(0, item.baseCost - lepDiscount);
               const bought = purchases.includes(item.id);
+              const isCbRadio = item.id === 'cb_radio';
+              const cbActive = isCbRadio && cbRadioGamesLeft > 0;
+              const effectiveBought = bought || cbActive;
               const canAfford = coins >= cost;
               return (
                 <TouchableOpacity
                   key={item.id}
-                  style={[styles.item, bought && styles.itemBought, !canAfford && !bought && styles.itemDisabled]}
+                  style={[styles.item, effectiveBought && styles.itemBought, !canAfford && !effectiveBought && styles.itemDisabled]}
                   onPress={() => {
-                    if (!bought && canAfford) {
-                      if (spendCoins(cost)) onPurchase(item.id);
+                    if (!effectiveBought && canAfford) {
+                      if (spendCoins(cost)) {
+                        if (isCbRadio) purchaseCbRadio();
+                        onPurchase(item.id);
+                      }
                     }
                   }}
-                  disabled={bought || !canAfford}
+                  disabled={effectiveBought || !canAfford}
                 >
                   <View style={styles.itemRow}>
                     <Text style={styles.itemName}>{item.name}</Text>
                     <Text style={[styles.itemCost, !canAfford && styles.costInsufficient]}>
-                      {bought ? '✓' : `${cost}¢`}
+                      {cbActive ? `✓ (${cbRadioGamesLeft} games)` : effectiveBought ? '✓' : `${cost}¢`}
                     </Text>
                   </View>
                   <Text style={styles.itemDesc}>{item.description}</Text>

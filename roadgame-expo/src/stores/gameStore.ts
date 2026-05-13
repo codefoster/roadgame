@@ -109,6 +109,10 @@ export interface GameState {
   // Shop bonuses applied at game start
   headStart: boolean;
   creditBoost: boolean;
+
+  // CB Radio
+  cbNextSpotBonus: number;
+  mpOpponentHasCbRadio: boolean;
 }
 
 type GameActions = {
@@ -164,6 +168,8 @@ type GameActions = {
   addLockedThreshold: (t: number) => void;
   setRoadEvent: (id: string | null, expiry?: number) => void;
   useSpareTire: () => void;
+  setCbNextSpotBonus: (n: number) => void;
+  setMpOpponentHasCbRadio: (v: boolean) => void;
 };
 
 function makeBingoCard(region: Region): string[] {
@@ -218,6 +224,7 @@ export const useGameStore = create<GameState & GameActions>((set, get) => ({
   spareTireUsed: false,
   roadEventId: null, roadEventExpiry: 0,
   headStart: false, creditBoost: false,
+  cbNextSpotBonus: 0, mpOpponentHasCbRadio: false,
 
   // ── actions ──
   initGame: ({ weather, region, activeBadges, purchases }) => {
@@ -261,6 +268,7 @@ export const useGameStore = create<GameState & GameActions>((set, get) => ({
       nextBadgeId: null,
       headStart: purchases.includes('head_start'),
       creditBoost: purchases.includes('credit_boost'),
+      cbNextSpotBonus: 0, mpOpponentHasCbRadio: false,
     });
   },
 
@@ -378,4 +386,6 @@ export const useGameStore = create<GameState & GameActions>((set, get) => ({
   })),
   setRoadEvent: (id, expiry = 0) => set({ roadEventId: id, roadEventExpiry: expiry }),
   useSpareTire: () => set({ spareTireUsed: true }),
+  setCbNextSpotBonus: (n) => set({ cbNextSpotBonus: n }),
+  setMpOpponentHasCbRadio: (v) => set({ mpOpponentHasCbRadio: v }),
 }));

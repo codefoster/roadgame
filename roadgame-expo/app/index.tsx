@@ -8,7 +8,7 @@ import BadgesOverlay from '../src/components/BadgesOverlay';
 
 export default function StartScreen() {
   const router = useRouter();
-  const { badges, badgeCooldowns } = usePersistentStore();
+  const { badges, badgeCooldowns, cbRadioGamesLeft } = usePersistentStore();
 
   const [weather, setWeather] = useState<Weather>('sunny');
   const [region, setRegion] = useState<Region>('forest');
@@ -27,13 +27,17 @@ export default function StartScreen() {
   }
 
   function startGame() {
+    const allPurchases = [...purchases];
+    if (cbRadioGamesLeft > 0 && !allPurchases.includes('cb_radio')) {
+      allPurchases.push('cb_radio');
+    }
     router.push({
       pathname: '/game',
       params: {
         weather,
         region,
         activeBadges: activeBadges.join(','),
-        purchases: purchases.join(','),
+        purchases: allPurchases.join(','),
       },
     });
   }

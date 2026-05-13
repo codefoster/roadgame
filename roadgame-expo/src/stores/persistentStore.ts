@@ -8,11 +8,14 @@ interface PersistentState {
   badges: string[];
   badgeCooldowns: Record<string, number>;
   badgeLevels: Record<string, number>;
+  cbRadioGamesLeft: number;
 
   addCoins: (n: number) => void;
   spendCoins: (n: number) => boolean;
   setCoinFloor: (n: number) => void;
   earnBadge: (id: string) => void;
+  purchaseCbRadio: () => void;
+  tickCbRadio: () => void;
   upgradeBadge: (id: string) => boolean; // returns false if can't afford
   setBadgeCooldown: (id: string, games: number) => void;
   tickCooldowns: () => void;
@@ -26,6 +29,7 @@ export const usePersistentStore = create<PersistentState>()(
       badges: [],
       badgeCooldowns: {},
       badgeLevels: {},
+      cbRadioGamesLeft: 0,
 
       addCoins: (n) => set((s) => ({ coins: s.coins + n })),
 
@@ -67,6 +71,9 @@ export const usePersistentStore = create<PersistentState>()(
           }
           return { badgeCooldowns: updated };
         }),
+
+      purchaseCbRadio: () => set({ cbRadioGamesLeft: 3 }),
+      tickCbRadio: () => set((s) => ({ cbRadioGamesLeft: Math.max(0, s.cbRadioGamesLeft - 1) })),
     }),
     {
       name: 'roadgame-save',

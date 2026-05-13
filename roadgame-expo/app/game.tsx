@@ -69,6 +69,7 @@ export default function GameScreen() {
   const grassRef        = useRef<ReturnType<typeof setTimeout>  | null>(null);
   const patrolBlockRef  = useRef<ReturnType<typeof setTimeout>  | null>(null);
   const roadEventTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const cbChatterRef    = useRef<ReturnType<typeof setTimeout>  | null>(null);
   const coinAccRef      = useRef(0); // accumulated points toward next coin
   const patrolPausedWatch = useRef(false);
 
@@ -99,6 +100,7 @@ export default function GameScreen() {
     scheduleTourist();
     scheduleRival();
     scheduleRoadEvent();
+    if (purchases.includes('cb_radio')) scheduleChatter();
 
     if (mpActive) setupMultiplayer();
 
@@ -108,7 +110,7 @@ export default function GameScreen() {
   function clearAllTimers() {
     [bTimerRef, decayTimerRef, rivalTimerRef, mpSyncRef, mpCountdownRef].forEach(r => r.current && clearInterval(r.current));
     if (mpZapRef.current) clearTimeout(mpZapRef.current);
-    [flashTimerRef, touristTimerRef, patrolTimerRef, infiniteRef, doubleRef, grassRef, patrolBlockRef, roadEventTimerRef]
+    [flashTimerRef, touristTimerRef, patrolTimerRef, infiniteRef, doubleRef, grassRef, patrolBlockRef, roadEventTimerRef, cbChatterRef]
       .forEach(r => r.current && clearTimeout(r.current));
     relayRef.current?.stop();
   }
@@ -121,12 +123,18 @@ export default function GameScreen() {
     const client = new RelayClient(params.roomCode!, (msg) => {
       if (msg.type === 'sync' && msg.payload) {
         store.setMpOpponentScore(msg.payload.score as number ?? 0);
+        if (msg.payload.hasCbRadio !== undefined) {
+          store.setMpOpponentHasCbRadio(!!msg.payload.hasCbRadio);
+        }
       }
       if (msg.type === 'zap') {
         store.setMpZapped(true);
         doFlash('⚡ Zapped by opponent!', '#ffff00');
         if (mpZapRef.current) clearTimeout(mpZapRef.current);
         mpZapRef.current = setTimeout(() => store.setMpZapped(false), 5000);
+      }
+      if (msg.type === 'chatter' && msg.payload) {
+        doFlash(msg.payload.text as string ?? '📻 Radio chatter…', msg.payload.color as string ?? '#ff8800');
       }
     });
     client.start();
@@ -135,7 +143,10 @@ export default function GameScreen() {
     store.setMpTimeLeft(MP_DURATION);
 
     mpSyncRef.current = setInterval(() => {
-      client.send('sync', { score: useGameStore.getState().scoreA });
+      client.send('sync', {
+        score: useGameStore.getState().scoreA,
+        hasCbRadio: purchases.includes('cb_radio'),
+      });
     }, 2000);
 
     mpCountdownRef.current = setInterval(() => {
@@ -159,6 +170,21 @@ export default function GameScreen() {
     store.addScoreB(-15);
     relayRef.current.send('zap', {});
     doFlash('⚡ Zapped opponent!', '#ff8800');
+  }
+
+  function pressDeceive() {
+    const s = useGameStore.getState();
+    if (s.scoreB < 10 || !relayRef.current) return;
+    store.addScoreB(-10);
+    const fakeMessages = [
+      { text: '📻 Bear in the air, back it down!', color: '#ffaa00' },
+      { text: '📻 Breaker — hot spot ahead!', color: '#ff8800' },
+      { text: '📻 Easy miles out here! +20 credits', color: '#00ccff' },
+      { text: '📻 Good hunting! +15 pts', color: '#aaffaa' },
+    ];
+    const fake = pickRandom(fakeMessages);
+    relayRef.current.send('chatter', { text: fake.text, color: fake.color });
+    doFlash('📻 Sent false chatter!', '#aa44ff');
   }
 
   // ── B: watch ────────────────────────────────────────────────────────────────
@@ -322,6 +348,13 @@ export default function GameScreen() {
     if (bonus > 0) {
       store.addScoreA(bonus);
       if (streak === 5 || streak === 10 || streak === 15) doFlash(`🔥 ${streak}-Streak! +${bonus}`, '#ff8800');
+    }
+
+    // CB Radio: hot spot bonus
+    const cbBonus = useGameStore.getState().cbNextSpotBonus;
+    if (cbBonus > 0) {
+      store.addScoreA(cbBonus);
+      store.setCbNextSpotBonus(0);
     }
 
     checkCoinsFromScore(points);
@@ -541,6 +574,37 @@ export default function GameScreen() {
     }
   }
 
+  // ── CB Chatter ────────────────────────────────────────────────────────────────
+
+  function scheduleChatter() {
+    const delay = randInt(45000, 90000);
+    cbChatterRef.current = setTimeout(doChatter, delay);
+  }
+
+  function doChatter() {
+    const messages = [
+      { id: 'hot_spot',    text: '📻 Breaker — hot spot ahead!',       color: '#ff8800' },
+      { id: 'credits',     text: '📻 Easy miles out here! +20 credits', color: '#00ccff' },
+      { id: 'pts',         text: '📻 Good hunting! +15 pts',            color: '#aaffaa' },
+      { id: 'patrol_warn', text: '📻 Bear in the air, back it down!',   color: '#ffaa00' },
+    ];
+    const msg = pickRandom(messages);
+    doFlash(msg.text, msg.color);
+    switch (msg.id) {
+      case 'hot_spot':
+        store.setCbNextSpotBonus(15);
+        break;
+      case 'credits':
+        store.addScoreB(20);
+        break;
+      case 'pts':
+        store.addScoreA(15);
+        break;
+      // patrol_warn: display only, no mechanical effect
+    }
+    scheduleChatter();
+  }
+
   // ── Hitchhiker ────────────────────────────────────────────────────────────────
 
   useEffect(() => {
@@ -728,6 +792,7 @@ export default function GameScreen() {
     }
     persist.setCoinFloor(0);
     persist.tickCooldowns();
+    if (purchases.includes('cb_radio')) persist.tickCbRadio();
     router.replace('/');
   }
 
@@ -927,6 +992,16 @@ export default function GameScreen() {
             <Text style={styles.zapCost}>−15 credits</Text>
           </TouchableOpacity>
         )}
+        {mpActive && store.mpOpponentHasCbRadio && purchases.includes('cb_radio') && (
+          <TouchableOpacity
+            style={[styles.secondaryBtn, styles.deceiveBtn, scoreB < 10 && styles.zapBtnDisabled]}
+            onPress={pressDeceive}
+            disabled={scoreB < 10}
+          >
+            <Text style={styles.secondaryBtnText}>📻 Deceive</Text>
+            <Text style={styles.zapCost}>−10 credits</Text>
+          </TouchableOpacity>
+        )}
       </View>
 
       {/* Tourist prompt */}
@@ -1022,6 +1097,7 @@ const styles = StyleSheet.create({
   zapBtn: { backgroundColor: '#3a2200', borderColor: '#ff8800', borderWidth: 1 },
   zapBtnDisabled: { opacity: 0.4 },
   zapCost: { color: '#ff8800', fontSize: 10, textAlign: 'center' },
+  deceiveBtn: { backgroundColor: '#2a002a', borderColor: '#aa44ff', borderWidth: 1 },
 
   scoreRow: { flexDirection: 'row', paddingHorizontal: 8, marginBottom: 8 },
   scoreBox: { flex: 1, alignItems: 'center', padding: 8, backgroundColor: '#111', marginHorizontal: 2, borderRadius: 6 },

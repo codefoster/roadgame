@@ -182,7 +182,7 @@ export const SHOP_ITEMS: ShopItem[] = [
   { id: 'golden_touch', name: 'Golden Touch',  description: '2 pre-marked golden bingo squares',             baseCost: 20 },
   { id: 'hunters_kit',  name: "Hunter's Kit",  description: 'Boss fights: raises win chance to 55–45%',      baseCost: 25 },
   { id: 'power_relic',  name: 'Power Relic',   description: 'Boss fights: raises win chance to 80–65%',      baseCost: 40 },
-  { id: 'cb_radio',     name: 'CB Radio',      description: 'Patrol warning, more hitchhikers, next badge preview', baseCost: 20 },
+  { id: 'cb_radio',     name: 'CB Radio',      description: 'Random chatter with real effects. Deceive rivals in MP. Lasts 3 games.', baseCost: 20 },
   { id: 'spare_tire',   name: 'Spare Tire',    description: 'Once per game: credits bottom out at 1 instead of 0',  baseCost: 12 },
   { id: 'rival_decoy',  name: 'Rival Decoy',   description: 'Rival starts at −30 pts',                             baseCost: 18 },
 ];
