@@ -452,7 +452,7 @@ export default function GameScreen() {
       }
       case 'challenge_spot': {
         const manticore = hasBadge(activeBadges, 'manticore');
-        const mult = manticore ? 1.5 + badgeLevel(persist.badgeLevels, 'manticore') * 0.5 : 1;
+        const mult = manticore ? ([1.3, 1.5, 1.7, 2.0][badgeLevel(persist.badgeLevels, 'manticore')] ?? 1.3) : 1;
         const duration = Math.round(20000 * mult);
         store.setFlashChallenge({ type: 'spot3', target: 3, progress: 0, deadline: Date.now() + duration });
         doFlash('Challenge: Spot 3 in 20s!', '#ff8800');
@@ -461,7 +461,7 @@ export default function GameScreen() {
       }
       case 'challenge_watch': {
         const manticoreW = hasBadge(activeBadges, 'manticore');
-        const multW = manticoreW ? 1.5 + badgeLevel(persist.badgeLevels, 'manticore') * 0.5 : 1;
+        const multW = manticoreW ? ([1.3, 1.5, 1.7, 2.0][badgeLevel(persist.badgeLevels, 'manticore')] ?? 1.3) : 1;
         const target = randInt(15, 40);
         const durationW = Math.round(30000 * multW);
         doFlash(`Challenge: Watch ${target} credits!`, '#00ccff');
@@ -471,7 +471,7 @@ export default function GameScreen() {
       }
       case 'challenge_l2': {
         const manticoreL = hasBadge(activeBadges, 'manticore');
-        const multL = manticoreL ? 1.5 + badgeLevel(persist.badgeLevels, 'manticore') * 0.5 : 1;
+        const multL = manticoreL ? ([1.3, 1.5, 1.7, 2.0][badgeLevel(persist.badgeLevels, 'manticore')] ?? 1.3) : 1;
         const durationL = Math.round(60000 * multL);
         doFlash('Challenge: Earn L2+ power-up!', '#88ff44');
         store.setFlashChallenge({ type: 'earn_l2', target: 1, progress: 0, deadline: Date.now() + durationL });
@@ -480,7 +480,7 @@ export default function GameScreen() {
       }
       case 'challenge_switch': {
         const manticoreS = hasBadge(activeBadges, 'manticore');
-        const multS = manticoreS ? 1.5 + badgeLevel(persist.badgeLevels, 'manticore') * 0.5 : 1;
+        const multS = manticoreS ? ([1.3, 1.5, 1.7, 2.0][badgeLevel(persist.badgeLevels, 'manticore')] ?? 1.3) : 1;
         const durationS = Math.round(30000 * multS);
         doFlash('Challenge: Switch 2× in 30s!', '#ff44aa');
         store.setFlashChallenge({ type: 'switch2', target: 2, progress: 0, deadline: Date.now() + durationS });
