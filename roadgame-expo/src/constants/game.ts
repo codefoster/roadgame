@@ -26,7 +26,7 @@ export interface BadgeDef {
 
 export const BADGES: BadgeDef[] = [
   { id: 'bigfoot',     name: 'Bigfoot',     description: '10–25% chance per spot of 3× pts (rare encounter)' },
-  { id: 'phoenix',     name: 'Phoenix',     description: 'Score floor: 5/10/15/20 by level' },
+  { id: 'phoenix',     name: 'Phoenix',     description: 'Coin balance never drops below 5/10/15/20 by level' },
   { id: 'unicorn',     name: 'Unicorn',     description: '1 coin per 15/12/9/6 pts by level' },
   { id: 'kraken',      name: 'Kraken',      description: 'Rival −1 to −4 pts per turn by level' },
   { id: 'yeti',        name: 'Yeti',        description: 'Credits never decay' },

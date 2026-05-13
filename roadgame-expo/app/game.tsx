@@ -82,6 +82,12 @@ export default function GameScreen() {
       store.setRivalFrozenTurns(20 + level * 5);
     }
 
+    // Phoenix: set coin floor for this game
+    if (activeBadges.includes('phoenix')) {
+      const level = badgeLevel(persist.badgeLevels, 'phoenix');
+      persist.setCoinFloor(5 + level * 5);
+    }
+
     scheduleFlash();
     startDecay();
     scheduleTourist();
@@ -245,8 +251,7 @@ export default function GameScreen() {
     );
 
     if (!store.infiniteCredits) store.setScoreB(newCredits);
-    const phoenixFloor = 5 + badgeLevel(persist.badgeLevels, 'phoenix') * 5;
-    store.addScoreA(points, phoenixFloor);
+    store.addScoreA(points);
     store.setEffect({ stackHoldCount: store.spotCount + 1 } as any);
     // actually increment spotCount
     useGameStore.setState(s => ({ spotCount: s.spotCount + 1 }));
@@ -667,6 +672,7 @@ export default function GameScreen() {
         persist.setBadgeCooldown(id, cooldownGames + 1);
       }
     }
+    persist.setCoinFloor(0);
     persist.tickCooldowns();
     router.replace('/');
   }

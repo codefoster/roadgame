@@ -4,12 +4,14 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 
 interface PersistentState {
   coins: number;
+  coinFloor: number;
   badges: string[];
   badgeCooldowns: Record<string, number>;
   badgeLevels: Record<string, number>;
 
   addCoins: (n: number) => void;
   spendCoins: (n: number) => boolean;
+  setCoinFloor: (n: number) => void;
   earnBadge: (id: string) => void;
   upgradeBadge: (id: string) => boolean; // returns false if can't afford
   setBadgeCooldown: (id: string, games: number) => void;
@@ -20,6 +22,7 @@ export const usePersistentStore = create<PersistentState>()(
   persist(
     (set, get) => ({
       coins: 0,
+      coinFloor: 0,
       badges: [],
       badgeCooldowns: {},
       badgeLevels: {},
@@ -27,10 +30,14 @@ export const usePersistentStore = create<PersistentState>()(
       addCoins: (n) => set((s) => ({ coins: s.coins + n })),
 
       spendCoins: (n) => {
-        if (get().coins < n) return false;
+        const { coins, coinFloor } = get();
+        if (coins < n) return false;
+        if (coins - n < coinFloor) return false;
         set((s) => ({ coins: s.coins - n }));
         return true;
       },
+
+      setCoinFloor: (n) => set({ coinFloor: n }),
 
       earnBadge: (id) =>
         set((s) => ({

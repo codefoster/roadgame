@@ -109,7 +109,7 @@ type GameActions = {
     purchases: string[];
   }) => void;
   setScoreA: (n: number) => void;
-  addScoreA: (n: number, phoenixFloor?: number) => void;
+  addScoreA: (n: number) => void;
   setScoreB: (n: number) => void;
   addScoreB: (n: number) => void;
   setPendingB: (n: number) => void;
@@ -241,10 +241,7 @@ export const useGameStore = create<GameState & GameActions>((set, get) => ({
   },
 
   setScoreA: (n) => set({ scoreA: n }),
-  addScoreA: (n, phoenixFloor = 5) => set((s) => {
-    const newA = Math.max(0, s.scoreA + n);
-    return { scoreA: s.activeBadges.includes('phoenix') ? Math.max(phoenixFloor, newA) : newA };
-  }),
+  addScoreA: (n) => set((s) => ({ scoreA: Math.max(0, s.scoreA + n) })),
   setScoreB: (n) => set({ scoreB: Math.max(0, n) }),
   addScoreB: (n) => set((s) => ({ scoreB: Math.max(0, s.scoreB + n) })),
   setPendingB: (n) => set({ pendingB: n }),
