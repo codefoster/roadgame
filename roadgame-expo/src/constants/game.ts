@@ -62,14 +62,14 @@ export const POWERUPS: PowerupDef[] = [
   { code: '1a', name: 'Infinite Credits (5s)',  description: 'Floods credits, then resets',                 tier: 1 },
   { code: '1b', name: 'Double Points (5s)',      description: '2× pts on every Spot for 5s',                tier: 1 },
   { code: '1c', name: 'Lucky Roll',              description: 'Next power-up earned is best variant',       tier: 1 },
-  { code: '1d', name: 'Free Switch',             description: 'Next Switch press has no penalty',           tier: 1 },
+  { code: '1d', name: 'Energy Drink',             description: 'Instantly adds +25 credits',                  tier: 1 },
   { code: '1e', name: 'Hold Boost',              description: "Next A/C press won't reset Watch timer",     tier: 1 },
   { code: '2a', name: 'Infinite Credits (10s)',  description: 'Floods credits for 10s, then resets',        tier: 2 },
   { code: '2b', name: 'Double Points (10s)',     description: '2× pts on every Spot for 10s',               tier: 2 },
   { code: '2c', name: 'Jackpot Hold',            description: 'Next hold converts looks to 2× points',      tier: 2 },
   { code: '2d', name: 'Grass Vision (5s)',        description: 'Grass toggle: if on, A gives 3× for 5s',    tier: 2 },
   { code: '2e', name: 'Power Surge',             description: 'Next earned power-up bumped up one tier',    tier: 2 },
-  { code: '3a', name: 'Switch Flip',             description: 'Next C gives +20 instead of penalty',        tier: 3 },
+  { code: '3a', name: 'Full Throttle',            description: 'Instantly gain +40 pts (sightings)',          tier: 3 },
   { code: '3b', name: 'Double Down',             description: 'Doubles current pending credits immediately', tier: 3 },
   { code: '3c', name: 'Reroll',                  description: 'Re-rolls top power-up in list',              tier: 3 },
   { code: '3d', name: 'All In',                  description: 'Next Spot scores full Credit balance & clears it', tier: 3 },
@@ -180,6 +180,8 @@ export const SHOP_ITEMS: ShopItem[] = [
   { id: 'hunters_kit',  name: "Hunter's Kit",  description: 'Boss fights: raises win chance to 55–45%',      baseCost: 25 },
   { id: 'power_relic',  name: 'Power Relic',   description: 'Boss fights: raises win chance to 80–65%',      baseCost: 40 },
   { id: 'cb_radio',     name: 'CB Radio',      description: 'Patrol warning, more hitchhikers, next badge preview', baseCost: 20 },
+  { id: 'spare_tire',   name: 'Spare Tire',    description: 'Once per game: credits bottom out at 1 instead of 0',  baseCost: 12 },
+  { id: 'rival_decoy',  name: 'Rival Decoy',   description: 'Rival starts at −30 pts',                             baseCost: 18 },
 ];
 
 // ─── Bosses ──────────────────────────────────────────────────────────────────
@@ -284,4 +286,22 @@ export const BOSSES: BossDef[] = [
     winPts: 120, winCoins: 50, losePts: 80, loseCoins: 0, loseCredits: 0,
     noFlee: true, fleeCoins: 0, bareHandsDouble: false,
   },
+];
+
+// ─── Road Events ─────────────────────────────────────────────────────────────
+
+export interface RoadEventDef {
+  id: string;
+  name: string;
+  desc: string;
+  duration: number; // seconds; 0 = interactive (player must choose)
+  color: string;
+}
+
+export const ROAD_EVENTS: RoadEventDef[] = [
+  { id: 'traffic_jam', name: 'Traffic Jam',  desc: 'Watch tick paused for 45s — stuck in gridlock!',  duration: 45, color: '#cc4400' },
+  { id: 'speed_trap',  name: 'Speed Trap!',  desc: 'Patrol risk doubled for 60s — easy on the gas.',  duration: 60, color: '#dd0000' },
+  { id: 'open_road',   name: 'Open Road!',   desc: '+1 pt per spot for 30s — clear skies ahead!',     duration: 30, color: '#00aa44' },
+  { id: 'gas_station', name: 'Gas Station',  desc: 'Spend 10 credits for +25 pts, or drive past.',    duration: 0,  color: '#ccaa00' },
+  { id: 'shortcut',    name: 'Shortcut!',    desc: 'Spend 8 coins for +30 pts, or stay on the road.', duration: 0,  color: '#0099cc' },
 ];

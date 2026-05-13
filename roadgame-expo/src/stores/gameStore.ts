@@ -20,10 +20,6 @@ export interface GameState {
   bWatching: boolean;
   toggleMode: 'hold' | 'tap';
 
-  // Category
-  category: 'nature' | 'manmade';
-  forcedCRemaining: number;
-
   // Power-ups list (earned, not yet used)
   powerups: string[];
 
@@ -34,8 +30,6 @@ export interface GameState {
   grassOn: boolean;
   grassExpiry: number;
   nextACKeepB: boolean;
-  nextCFree: boolean;
-  nextCFlip: boolean;
   nextAAllIn: boolean;
   jackpotHold: boolean;
   stackHold: boolean;
@@ -104,6 +98,13 @@ export interface GameState {
   // Multiplayer
   mpOpponentScore: number;
 
+  // Shop one-time flags
+  spareTireUsed: boolean;
+
+  // Road events
+  roadEventId: string | null;
+  roadEventExpiry: number; // ms timestamp; 0 for interactive events
+
   // Shop bonuses applied at game start
   headStart: boolean;
   creditBoost: boolean;
@@ -125,14 +126,12 @@ type GameActions = {
   commitPendingB: () => void;
   setBWatching: (v: boolean) => void;
   setToggleMode: (m: 'hold' | 'tap') => void;
-  setCategory: (c: 'nature' | 'manmade') => void;
-  setForcedCRemaining: (n: number) => void;
   addPowerup: (code: string) => void;
   removePowerup: (code: string) => void;
   rerollTopPowerup: (region: Region) => void;
   setEffect: (effect: Partial<Pick<GameState,
     'doublePoints' | 'doublePointsExpiry' | 'grassVisible' | 'grassOn' | 'grassExpiry' |
-    'nextACKeepB' | 'nextCFree' | 'nextCFlip' | 'nextAAllIn' | 'jackpotHold' |
+    'nextACKeepB' | 'nextAAllIn' | 'jackpotHold' |
     'stackHold' | 'luckyRoll' | 'powerSurge' | 'infiniteCredits' | 'infiniteExpiry' |
     'stackHoldCount'
   >>) => void;
@@ -158,6 +157,8 @@ type GameActions = {
   logAggression: () => void;
   markFlashBlockUsed: () => void;
   addLockedThreshold: (t: number) => void;
+  setRoadEvent: (id: string | null, expiry?: number) => void;
+  useSpareTire: () => void;
 };
 
 function makeBingoCard(region: Region): string[] {
@@ -186,11 +187,10 @@ export const useGameStore = create<GameState & GameActions>((set, get) => ({
   // ── initial state ──
   scoreA: 0, scoreB: 0, pendingB: 0, stackHoldCount: 0,
   bWatching: false, toggleMode: 'tap',
-  category: 'nature', forcedCRemaining: 0,
   powerups: [],
   doublePoints: false, doublePointsExpiry: 0,
   grassVisible: false, grassOn: false, grassExpiry: 0,
-  nextACKeepB: false, nextCFree: false, nextCFlip: false,
+  nextACKeepB: false,
   nextAAllIn: false, jackpotHold: false, stackHold: false,
   luckyRoll: false, powerSurge: false,
   infiniteCredits: false, infiniteExpiry: 0,
@@ -211,6 +211,8 @@ export const useGameStore = create<GameState & GameActions>((set, get) => ({
   weather: 'sunny', region: 'forest', activeBadges: [],
   spotCount: 0, dragonFlashesUsed: 0, lockedThresholds: [],
   aggressionLog: [], mpOpponentScore: 0,
+  spareTireUsed: false,
+  roadEventId: null, roadEventExpiry: 0,
   headStart: false, creditBoost: false,
 
   // ── actions ──
@@ -229,11 +231,10 @@ export const useGameStore = create<GameState & GameActions>((set, get) => ({
     set({
       scoreA, scoreB, pendingB: 0, stackHoldCount: 0,
       bWatching: false, toggleMode: 'tap',
-      category: 'nature', forcedCRemaining: 0,
       powerups: [],
       doublePoints: false, doublePointsExpiry: 0,
       grassVisible: false, grassOn: false, grassExpiry: 0,
-      nextACKeepB: false, nextCFree: false, nextCFlip: false,
+      nextACKeepB: false,
       nextAAllIn: false, jackpotHold: false, stackHold: false,
       luckyRoll: false, powerSurge: false,
       infiniteCredits: false, infiniteExpiry: 0,
@@ -247,11 +248,13 @@ export const useGameStore = create<GameState & GameActions>((set, get) => ({
       hitchhikerVisible: false, hitchhikerId: null,
       hGeologist: false, hBirdwatcher: false, hTrucker: false,
       hDJ: false, hWatchDouble: false, hitchhikerExpiry: 0,
-      rivalScore: 0, rivalFrozenTurns: 0, rivalSkipCount,
+      rivalScore: purchases.includes('rival_decoy') ? -30 : 0, rivalFrozenTurns: 0, rivalSkipCount,
       patrolVisible: false,
       weather, region, activeBadges,
       spotCount: 0, dragonFlashesUsed: 0, lockedThresholds: [],
       aggressionLog: [], mpOpponentScore: 0,
+      spareTireUsed: false,
+      roadEventId: null, roadEventExpiry: 0,
       nextBadgeId: null,
       headStart: purchases.includes('head_start'),
       creditBoost: purchases.includes('credit_boost'),
@@ -273,8 +276,6 @@ export const useGameStore = create<GameState & GameActions>((set, get) => ({
 
   setBWatching: (v) => set({ bWatching: v }),
   setToggleMode: (m) => set({ toggleMode: m }),
-  setCategory: (c) => set({ category: c }),
-  setForcedCRemaining: (n) => set({ forcedCRemaining: n }),
 
   addPowerup: (code) => set((s) => ({ powerups: [...s.powerups, code] })),
   removePowerup: (code) => set((s) => {
@@ -369,4 +370,6 @@ export const useGameStore = create<GameState & GameActions>((set, get) => ({
       ? s.lockedThresholds
       : [...s.lockedThresholds, t],
   })),
+  setRoadEvent: (id, expiry = 0) => set({ roadEventId: id, roadEventExpiry: expiry }),
+  useSpareTire: () => set({ spareTireUsed: true }),
 }));

@@ -4,12 +4,11 @@ import {
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 
-import { Region, Weather, TOURISTS, HITCHHIKERS, BOSSES, BADGES } from '../src/constants/game';
+import { Region, Weather, TOURISTS, HITCHHIKERS, BOSSES, BADGES, ROAD_EVENTS } from '../src/constants/game';
 import {
   bInterval, cPenalty, decayRate, decayThreshold,
   flashInterval, generatePowerup, spotPoints, watchTier,
   rivalAction, checkPatrol, randInt, pickRandom,
-  flashLooksPenalty, flashPtsPenalty, flashPenaltyMultiplier,
 } from '../src/lib/gameLogic';
 import { RelayClient } from '../src/lib/relay';
 import { useGameStore } from '../src/stores/gameStore';
@@ -22,6 +21,8 @@ import TouristOverlay from '../src/components/TouristOverlay';
 import PowerupList from '../src/components/PowerupList';
 import HitchhikerBanner from '../src/components/HitchhikerBanner';
 import BossFightOverlay from '../src/components/BossFightOverlay';
+import RoadEventBanner from '../src/components/RoadEventBanner';
+import RoadEventOverlay from '../src/components/RoadEventOverlay';
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
 
@@ -65,12 +66,14 @@ export default function GameScreen() {
   const grassRef        = useRef<ReturnType<typeof setTimeout>  | null>(null);
   const patrolBlockRef  = useRef<ReturnType<typeof setTimeout>  | null>(null);
   const switchFlashRef  = useRef<ReturnType<typeof setTimeout>  | null>(null);
+  const roadEventTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const coinAccRef      = useRef(0); // accumulated points toward next coin
   const patrolPausedWatch = useRef(false);
 
   const [bingoVisible, setBingoVisible] = useState(false);
   const [alphaVisible, setAlphaVisible] = useState(false);
   const [hitchhikerPopup, setHitchhikerPopup] = useState<{ name: string; description: string; duration: number } | null>(null);
+  const [roadEventBanner, setRoadEventBanner] = useState<{ name: string; desc: string; color: string; duration: number } | null>(null);
 
   // ── init ───────────────────────────────────────────────────────────────────
 
@@ -99,6 +102,7 @@ export default function GameScreen() {
     startDecay();
     scheduleTourist();
     scheduleRival();
+    scheduleRoadEvent();
 
     if (mpActive) setupMultiplayer();
 
@@ -107,7 +111,7 @@ export default function GameScreen() {
 
   function clearAllTimers() {
     [bTimerRef, decayTimerRef, rivalTimerRef, mpSyncRef].forEach(r => r.current && clearInterval(r.current));
-    [flashTimerRef, touristTimerRef, patrolTimerRef, infiniteRef, doubleRef, grassRef, patrolBlockRef, switchFlashRef]
+    [flashTimerRef, touristTimerRef, patrolTimerRef, infiniteRef, doubleRef, grassRef, patrolBlockRef, switchFlashRef, roadEventTimerRef]
       .forEach(r => r.current && clearTimeout(r.current));
     relayRef.current?.stop();
   }
@@ -123,7 +127,7 @@ export default function GameScreen() {
     client.start();
     relayRef.current = client;
     mpSyncRef.current = setInterval(() => {
-      client.send('sync', { score: store.scoreA });
+      client.send('sync', { score: useGameStore.getState().scoreA });
     }, 2000);
   }
 
@@ -149,6 +153,9 @@ export default function GameScreen() {
   }
 
   function onBTick() {
+    const s = useGameStore.getState();
+    if (s.roadEventId === 'traffic_jam' && Date.now() < s.roadEventExpiry) return;
+
     let credit = 1;
     if (weather === 'rainy') credit += 1;
     if (store.stackHold) {
@@ -239,7 +246,6 @@ export default function GameScreen() {
     const { points, newCredits } = spotPoints(
       store.scoreA,
       liveScoreB,
-      store.category,
       weather,
       store.doublePoints,
       store.grassVisible && store.grassOn,
@@ -252,21 +258,18 @@ export default function GameScreen() {
       store.spotCount
     );
 
-    if (!store.infiniteCredits) store.setScoreB(newCredits);
-    store.addScoreA(points);
+    if (!store.infiniteCredits) {
+      const spareTire = purchases.includes('spare_tire') && !store.spareTireUsed && newCredits <= 0;
+      if (spareTire) { store.setScoreB(1); store.useSpareTire(); doFlash('Spare Tire used!', '#ffaa00'); }
+      else store.setScoreB(newCredits);
+    }
+    const openRoad = store.roadEventId === 'open_road' && Date.now() < store.roadEventExpiry;
+    store.addScoreA(points + (openRoad ? 1 : 0));
     store.setEffect({ stackHoldCount: store.spotCount + 1 } as any);
     // actually increment spotCount
     useGameStore.setState(s => ({ spotCount: s.spotCount + 1 }));
 
     checkCoinsFromScore(points);
-
-    // Forced category
-    if (store.forcedCRemaining > 0) {
-      if (store.category === 'nature') {
-        store.addScoreA(-5);
-      }
-      store.setForcedCRemaining(store.forcedCRemaining - 1);
-    }
 
     // Challenge: spot3
     if (store.flashChallenge?.type === 'spot3') {
@@ -300,24 +303,11 @@ export default function GameScreen() {
     }
     if (store.nextACKeepB) store.setEffect({ nextACKeepB: false });
 
-    const newCat = store.category === 'nature' ? 'manmade' : 'nature';
-    store.setCategory(newCat);
-
     // Switch flash: free if pressed in time
     if (store.switchFlashActive) {
       store.setSwitchFlash(false);
       if (switchFlashRef.current) clearTimeout(switchFlashRef.current);
       store.addScoreA(5);
-      return;
-    }
-
-    if (store.nextCFree) {
-      store.setEffect({ nextCFree: false });
-      return;
-    }
-    if (store.nextCFlip) {
-      store.setEffect({ nextCFlip: false });
-      store.addScoreA(20);
       return;
     }
 
@@ -382,7 +372,6 @@ export default function GameScreen() {
 
   function doRandomFlash() {
     const score = store.scoreA;
-    const penMult = flashPenaltyMultiplier(activeBadges, persist.badgeLevels);
 
     // Dragon: block every other flash for the first 5 flash events (1st, 3rd, 5th blocked)
     if (hasBadge(activeBadges, 'dragon') && store.dragonFlashesUsed < 5) {
@@ -394,10 +383,10 @@ export default function GameScreen() {
       }
     }
 
-    const flashTypes = ['switch', 'nature', 'manmade', 'forced_c', 'steal', 'challenge_spot', 'challenge_watch', 'challenge_l2', 'challenge_switch'];
+    const flashTypes = ['switch', 'steal', 'challenge_spot', 'challenge_watch', 'challenge_l2', 'challenge_switch'];
     const weights = score >= 800
-      ? [3, 2, 2, 2, 4, 2, 2, 2, 2]
-      : [3, 3, 3, 2, 2, 2, 2, 2, 2];
+      ? [3, 4, 2, 2, 2, 2]
+      : [3, 2, 2, 2, 2, 2];
 
     // weighted pick
     const total = weights.reduce((a, b) => a + b, 0);
@@ -419,36 +408,6 @@ export default function GameScreen() {
             store.addScoreA(-cPenalty(score, false, 0));
           }
         }, 3000);
-        break;
-      }
-      case 'nature': {
-        if (store.category === 'nature') {
-          const lks = Math.round(flashLooksPenalty(score) * penMult);
-          const pts = Math.round(flashPtsPenalty(score) * penMult);
-          const fog = weather === 'foggy';
-          doFlash(fog ? '???' : `Nature: −${lks} lks, −${pts} pts`, '#00cc44');
-          store.addScoreA(-pts);
-          store.addScoreB(-lks);
-        } else {
-          doFlash('Nature (safe)', '#00cc44');
-        }
-        break;
-      }
-      case 'manmade': {
-        if (store.category === 'manmade') {
-          const lks = Math.round(flashLooksPenalty(score) * penMult);
-          const pts = Math.round(flashPtsPenalty(score) * penMult);
-          doFlash(`Man-made: −${lks} lks, −${pts} pts`, '#cccccc');
-          store.addScoreA(-pts);
-          store.addScoreB(-lks);
-        } else {
-          doFlash('Man-made (safe)', '#cccccc');
-        }
-        break;
-      }
-      case 'forced_c': {
-        doFlash('Next 10 lks: switch cat.', '#4488ff');
-        store.setForcedCRemaining(10);
         break;
       }
       case 'steal': {
@@ -535,6 +494,46 @@ export default function GameScreen() {
     store.addScoreA(pts);
   }
 
+  // ── Road Events ───────────────────────────────────────────────────────────────
+
+  function scheduleRoadEvent() {
+    const delay = randInt(90000, 180000);
+    roadEventTimerRef.current = setTimeout(() => {
+      const ev = pickRandom(ROAD_EVENTS);
+      if (ev.duration > 0) {
+        // Passive timed event
+        const expiry = Date.now() + ev.duration * 1000;
+        store.setRoadEvent(ev.id, expiry);
+        setRoadEventBanner({ name: ev.name, desc: ev.desc, color: ev.color, duration: ev.duration });
+        setTimeout(() => setRoadEventBanner(null), 4000);
+        setTimeout(() => store.setRoadEvent(null), ev.duration * 1000);
+      } else {
+        // Interactive event — auto-dismiss after 15s
+        store.setRoadEvent(ev.id, 0);
+        setTimeout(() => {
+          if (useGameStore.getState().roadEventId === ev.id) store.setRoadEvent(null);
+        }, 15000);
+      }
+      scheduleRoadEvent();
+    }, delay);
+  }
+
+  function onGasStation(stop: boolean) {
+    store.setRoadEvent(null);
+    if (stop) {
+      store.addScoreB(-10);
+      store.addScoreA(25);
+    }
+  }
+
+  function onShortcut(take: boolean) {
+    store.setRoadEvent(null);
+    if (take) {
+      persist.spendCoins(8);
+      store.addScoreA(30);
+    }
+  }
+
   // ── Hitchhiker ────────────────────────────────────────────────────────────────
 
   useEffect(() => {
@@ -587,7 +586,9 @@ export default function GameScreen() {
     // Only trigger if tapping 4+ times in the last second
     const pressesLastSecond = useGameStore.getState().aggressionLog.filter(t => Date.now() - t < 1000).length;
     if (pressesLastSecond < 4) return;
-    const aggression = Math.min(1, pressesLastSecond / 4);
+    const gs = useGameStore.getState();
+    const speedTrapActive = gs.roadEventId === 'speed_trap' && Date.now() < gs.roadEventExpiry;
+    const aggression = Math.min(1, (pressesLastSecond / 4) * (speedTrapActive ? 2 : 1));
     if (checkPatrol(region, aggression)) {
       if (purchases.includes('cb_radio')) {
         store.setFlash('📻 Breaker — smokey ahead!', '#ffaa00');
@@ -653,7 +654,7 @@ export default function GameScreen() {
         break;
       }
       case '1c': store.setEffect({ luckyRoll: true }); doFlash('Lucky Roll ready!', '#aaffaa'); break;
-      case '1d': store.setEffect({ nextCFree: true });  doFlash('Free Switch ready!', '#aaffff'); break;
+      case '1d': store.addScoreB(25); doFlash('Energy Drink! +25 credits', '#aaffff'); break;
       case '1e': store.setEffect({ nextACKeepB: true }); doFlash('Hold Boost ready!', '#aaaaff'); break;
       case '2c': store.setEffect({ jackpotHold: true }); doFlash('Jackpot Hold ready!', '#aa44ff'); break;
       case '2d': {
@@ -664,7 +665,7 @@ export default function GameScreen() {
         break;
       }
       case '2e': store.setEffect({ powerSurge: true }); doFlash('Power Surge ready!', '#ff8800'); break;
-      case '3a': store.setEffect({ nextCFlip: true }); doFlash('Switch Flip ready!', '#ff4488'); break;
+      case '3a': store.addScoreA(40); doFlash('Full Throttle! +40 pts', '#ff4488'); break;
       case '3b': {
         store.setPendingB(store.pendingB * 2);
         doFlash('Double Down!', '#ffaa00');
@@ -721,7 +722,7 @@ export default function GameScreen() {
 
   // ── render ────────────────────────────────────────────────────────────────────
 
-  const { scoreA, scoreB, pendingB, bWatching, toggleMode, category,
+  const { scoreA, scoreB, pendingB, bWatching, toggleMode,
     powerups, flashVisible, flashText, flashColor,
     doublePoints, grassVisible, grassOn, infiniteCredits,
     patrolVisible, rivalScore, activeBadges: storeActiveBadges,
@@ -770,12 +771,6 @@ export default function GameScreen() {
           </Text>
         </View>
         <View style={styles.scoreBox}>
-          <Text style={styles.scoreLabel}>Category</Text>
-          <Text style={[styles.scoreValue, { color: category === 'nature' ? '#4caf50' : '#ff8c00' }]}>
-            {category === 'nature' ? 'Nature' : 'Man-made'}
-          </Text>
-        </View>
-        <View style={styles.scoreBox}>
           <Text style={styles.scoreLabel}>Rival</Text>
           <Text style={styles.scoreValue}>{rivalScore}</Text>
         </View>
@@ -789,11 +784,6 @@ export default function GameScreen() {
         {hGeologist    && <Text style={styles.effectChip}>Geologist +1</Text>}
         {hTrucker      && <Text style={styles.effectChip}>Trucker No Decay</Text>}
         {hDJ           && <Text style={styles.effectChip}>DJ 2×</Text>}
-        {store.forcedCRemaining > 0 && (
-          <Text style={[styles.effectChip, { backgroundColor: '#330066' }]}>
-            Forced Cat: {store.forcedCRemaining}
-          </Text>
-        )}
         {store.switchFlashActive && (
           <Text style={[styles.effectChip, { backgroundColor: '#660000' }]}>Switch now!</Text>
         )}
@@ -845,7 +835,7 @@ export default function GameScreen() {
         >
           <Text style={styles.gameBtnLabel}>Switch</Text>
           <Text style={styles.gameBtnSub}>
-            {store.nextCFree ? 'Free!' : store.nextCFlip ? '+20' : `−${cPenalty(scoreA, hasBadge(effectiveBadges, 'selkie'), badgeLevel(persist.badgeLevels, 'selkie'))}`}
+            {`−${cPenalty(scoreA, hasBadge(effectiveBadges, 'selkie'), badgeLevel(persist.badgeLevels, 'selkie'))}`}
           </Text>
         </TouchableOpacity>
 
@@ -923,6 +913,24 @@ export default function GameScreen() {
         hunterActive={hHunter}
         valkyrieBonus={hasBadge(activeBadges, 'valkyrie') ? [0.10, 0.15, 0.20, 0.25][badgeLevel(persist.badgeLevels, 'valkyrie')] ?? 0.10 : 0}
         onResult={onBossResult}
+      />
+
+      {/* Road event banner (passive events) */}
+      {roadEventBanner && (
+        <RoadEventBanner
+          name={roadEventBanner.name}
+          desc={roadEventBanner.desc}
+          color={roadEventBanner.color}
+          duration={roadEventBanner.duration}
+          visible={!!roadEventBanner}
+        />
+      )}
+
+      {/* Road event overlay (interactive events) */}
+      <RoadEventOverlay
+        onGasStation={onGasStation}
+        onShortcut={onShortcut}
+        coins={persist.coins}
       />
     </View>
   );

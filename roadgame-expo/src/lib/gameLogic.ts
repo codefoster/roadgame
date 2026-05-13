@@ -117,7 +117,6 @@ export function watchTier(pendingCredits: number): 0 | 1 | 2 | 3 {
 export function spotPoints(
   score: number,
   credits: number,
-  category: 'nature' | 'manmade',
   weather: Weather,
   doublePoints: boolean,
   grassMode: boolean,
@@ -181,37 +180,6 @@ export function spotPoints(
   return { points: pts, newCredits: credits - creditCost };
 }
 
-export function flashPenaltyMultiplier(
-  activeBadges: string[],
-  badgeLevels: Record<string, number>
-): number {
-  let mult = 1;
-  if (activeBadges.includes('banshee')) {
-    const level = badgeLevels['banshee'] ?? 0;
-    mult *= 1 - ([0.20, 0.30, 0.40, 0.50][level] ?? 0.20);
-  }
-  if (activeBadges.includes('dragon')) {
-    const level = badgeLevels['dragon'] ?? 0;
-    mult *= 1 - level * 0.1; // level 1: 10%, 2: 20%, 3: 30% extra reduction
-  }
-  return mult;
-}
-
-export function flashLooksPenalty(score: number): number {
-  if (score >= 1000) return 40;
-  if (score >= 800) return 30;
-  if (score >= 500) return 25;
-  if (score >= 200) return 15;
-  return 10;
-}
-
-export function flashPtsPenalty(score: number): number {
-  if (score >= 1000) return 50;
-  if (score >= 800) return 40;
-  if (score >= 500) return 40;
-  if (score >= 200) return 30;
-  return 25;
-}
 
 // ─── Bingo helpers ────────────────────────────────────────────────────────────
 
@@ -250,11 +218,18 @@ export function rivalAction(
     case 'challenge':delta = randInt(5, 12); break;
     case 'penalty':  delta = -randInt(2, 6); break;
   }
+  // Catch-up: boost rival's positive actions when they're far behind
+  if (delta > 0) {
+    const gap = playerScore - rivalScore;
+    if (gap >= 200) delta = Math.round(delta * 2.0);
+    else if (gap >= 100) delta = Math.round(delta * 1.5);
+  }
+
   if (hasKraken) {
     const reduction = [2, 3, 5, 5][Math.min(3, krakenLevel)];
     delta = Math.max(delta - reduction, 0);
   }
-  return { newRivalScore: Math.max(0, rivalScore + delta), frozenTurns: 0 };
+  return { newRivalScore: rivalScore + delta, frozenTurns: 0 };
 }
 
 // ─── Patrol ──────────────────────────────────────────────────────────────────
