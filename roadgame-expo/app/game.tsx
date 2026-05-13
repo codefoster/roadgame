@@ -204,7 +204,15 @@ export default function GameScreen() {
     }
   }
 
+  function streakBonus(streak: number): number {
+    if (streak >= 15) return 10;
+    if (streak >= 10) return 5;
+    if (streak >= 5) return 2;
+    return 0;
+  }
+
   function commitWatch() {
+    store.resetStreak();
     const pending = store.pendingB;
     if (pending <= 0) return;
 
@@ -305,8 +313,16 @@ export default function GameScreen() {
     const openRoad = store.roadEventId === 'open_road' && Date.now() < store.roadEventExpiry;
     store.addScoreA(points + (openRoad ? 1 : 0));
     store.setEffect({ stackHoldCount: store.spotCount + 1 } as any);
-    // actually increment spotCount
     useGameStore.setState(s => ({ spotCount: s.spotCount + 1 }));
+
+    // Streak
+    store.incrementStreak();
+    const streak = useGameStore.getState().spotStreak;
+    const bonus = streakBonus(streak);
+    if (bonus > 0) {
+      store.addScoreA(bonus);
+      if (streak === 5 || streak === 10 || streak === 15) doFlash(`🔥 ${streak}-Streak! +${bonus}`, '#ff8800');
+    }
 
     checkCoinsFromScore(points);
 
@@ -591,6 +607,7 @@ export default function GameScreen() {
       const patrolDelay = purchases.includes('cb_radio') ? 5000 : 0;
       setTimeout(() => {
         store.setPatrolVisible(true);
+        store.resetStreak();
         // Pause B ticks for the duration of the stop
         if (bTimerRef.current) {
           clearInterval(bTimerRef.current);
@@ -802,6 +819,11 @@ export default function GameScreen() {
 
       {/* Active effects bar */}
       <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.effectsRow}>
+        {store.spotStreak >= 5 && (
+          <Text style={[styles.effectChip, { backgroundColor: '#3a1500', color: '#ff8800' }]}>
+            🔥 {store.spotStreak}-Streak {streakBonus(store.spotStreak) > 0 ? `+${streakBonus(store.spotStreak)}` : ''}
+          </Text>
+        )}
         {doublePoints  && <Text style={styles.effectChip}>2× Points</Text>}
         {grassVisible  && <Text style={styles.effectChip}>🌿 Grass</Text>}
         {infiniteCredits && <Text style={styles.effectChip}>∞ Credits</Text>}

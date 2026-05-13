@@ -15,6 +15,7 @@ export interface GameState {
   scoreB: number;       // credits
   pendingB: number;     // credits accumulating during watch
   stackHoldCount: number;
+  spotStreak: number;
 
   // Buttons
   bWatching: boolean;
@@ -126,6 +127,8 @@ type GameActions = {
   commitPendingB: () => void;
   setBWatching: (v: boolean) => void;
   setToggleMode: (m: 'hold' | 'tap') => void;
+  incrementStreak: () => void;
+  resetStreak: () => void;
   addPowerup: (code: string) => void;
   removePowerup: (code: string) => void;
   rerollTopPowerup: (region: Region) => void;
@@ -187,7 +190,7 @@ function pickGoldenTiles(): number[] {
 
 export const useGameStore = create<GameState & GameActions>((set, get) => ({
   // ── initial state ──
-  scoreA: 0, scoreB: 0, pendingB: 0, stackHoldCount: 0,
+  scoreA: 0, scoreB: 0, pendingB: 0, stackHoldCount: 0, spotStreak: 0,
   bWatching: false, toggleMode: 'tap',
   powerups: [],
   doublePoints: false, doublePointsExpiry: 0,
@@ -274,6 +277,8 @@ export const useGameStore = create<GameState & GameActions>((set, get) => ({
     stackHoldCount: 0,
   })),
 
+  incrementStreak: () => set((s) => ({ spotStreak: s.spotStreak + 1 })),
+  resetStreak: () => set({ spotStreak: 0 }),
   setBWatching: (v) => set({ bWatching: v }),
   setToggleMode: (m) => set({ toggleMode: m }),
 
