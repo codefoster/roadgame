@@ -152,14 +152,15 @@ export interface HitchhikerType {
 }
 
 export const HITCHHIKERS: HitchhikerType[] = [
-  { id: 'geologist',   name: 'Geologist',           effect: 'spot_bonus',    duration: 30, description: '+1 pt per spot for 30s' },
-  { id: 'birdwatcher', name: 'Birdwatcher',          effect: 'rare_3x',       duration: 30, description: 'Rare encounters 3× for 30s' },
-  { id: 'trucker',     name: 'Trucker',              effect: 'no_decay',      duration: 45, description: 'No credit decay for 45s' },
-  { id: 'dj',          name: 'DJ',                   effect: 'double_points', duration: 25, description: '2× points for 25s' },
-  { id: 'navigator',   name: 'Navigator',            effect: 'bingo_auto',    duration: 0,  description: 'Auto-marks 2 bingo cells' },
-  { id: 'foodie',      name: 'Foodie',               effect: 'foodie',        duration: 0,  description: '−15 credits, +20 pts' },
-  { id: 'sleeper',     name: 'Sleeper',              effect: 'none',          duration: 0,  description: 'No effect' },
-  { id: 'conspiracy',  name: 'Conspiracy Theorist',  effect: 'watch_2x',      duration: 20, description: 'Credits tick 2× faster for 20s' },
+  { id: 'geologist',   name: 'Geologist',           effect: 'spot_bonus',    duration: 30,  description: '+1 pt per spot for 30s' },
+  { id: 'birdwatcher', name: 'Birdwatcher',          effect: 'rare_3x',       duration: 30,  description: 'Rare encounters 3× for 30s' },
+  { id: 'trucker',     name: 'Trucker',              effect: 'no_decay',      duration: 45,  description: 'No credit decay for 45s' },
+  { id: 'dj',          name: 'DJ',                   effect: 'double_points', duration: 25,  description: '2× points for 25s' },
+  { id: 'navigator',   name: 'Navigator',            effect: 'bingo_auto',    duration: 0,   description: 'Auto-marks 2 bingo cells' },
+  { id: 'foodie',      name: 'Foodie',               effect: 'foodie',        duration: 0,   description: '−15 credits, +20 pts' },
+  { id: 'sleeper',     name: 'Sleeper',              effect: 'none',          duration: 0,   description: 'No effect' },
+  { id: 'conspiracy',  name: 'Conspiracy Theorist',  effect: 'watch_2x',      duration: 20,  description: 'Credits tick 2× faster for 20s' },
+  { id: 'hunter',      name: 'Hunter',               effect: 'boss_boost',    duration: 120, description: '+20% boss fight win chance for 2 min' },
 ];
 
 // ─── Shop ─────────────────────────────────────────────────────────────────────
@@ -172,8 +173,35 @@ export interface ShopItem {
 }
 
 export const SHOP_ITEMS: ShopItem[] = [
-  { id: 'head_start',   name: 'Head Start',   description: '+50 pts at game start',              baseCost: 5  },
-  { id: 'credit_boost', name: 'Credit Boost', description: '+25 credits at game start',          baseCost: 10 },
-  { id: 'rival_chill',  name: 'Rival Chill',  description: 'Rival skips first 5 actions',        baseCost: 15 },
-  { id: 'golden_touch', name: 'Golden Touch', description: '2 pre-marked golden bingo squares',  baseCost: 20 },
+  { id: 'head_start',   name: 'Head Start',    description: '+50 pts at game start',                         baseCost: 5  },
+  { id: 'credit_boost', name: 'Credit Boost',  description: '+25 credits at game start',                     baseCost: 10 },
+  { id: 'rival_chill',  name: 'Rival Chill',   description: 'Rival skips first 5 actions',                   baseCost: 15 },
+  { id: 'golden_touch', name: 'Golden Touch',  description: '2 pre-marked golden bingo squares',             baseCost: 20 },
+  { id: 'hunters_kit',  name: "Hunter's Kit",  description: 'Boss fights: raises win chance to 55–45%',      baseCost: 25 },
+  { id: 'power_relic',  name: 'Power Relic',   description: 'Boss fights: raises win chance to 80–65%',      baseCost: 40 },
+];
+
+// ─── Bosses ──────────────────────────────────────────────────────────────────
+
+export interface BossDef {
+  id: string;
+  name: string;
+  description: string;
+  bareHandsChance: number;
+  kitChance: number;
+  relicChance: number;
+  winPts: number;
+  winCoins: number;
+  losePts: number;
+}
+
+export const BOSSES: BossDef[] = [
+  { id: 'road_goblin',    name: 'Road Goblin',    description: 'A sneaky goblin darts across your path!',
+    bareHandsChance: 0.35, kitChance: 0.60, relicChance: 0.85, winPts: 20, winCoins: 8,  losePts: 10 },
+  { id: 'forest_troll',   name: 'Forest Troll',   description: 'A massive troll blocks the road, demanding tribute!',
+    bareHandsChance: 0.25, kitChance: 0.52, relicChance: 0.78, winPts: 35, winCoins: 12, losePts: 20 },
+  { id: 'mountain_giant', name: 'Mountain Giant', description: 'A thundering giant shakes the earth beneath your feet!',
+    bareHandsChance: 0.15, kitChance: 0.45, relicChance: 0.72, winPts: 55, winCoins: 20, losePts: 35 },
+  { id: 'void_wraith',    name: 'Void Wraith',    description: 'A spectral terror from beyond emerges from the shadows!',
+    bareHandsChance: 0.08, kitChance: 0.38, relicChance: 0.65, winPts: 80, winCoins: 35, losePts: 55 },
 ];

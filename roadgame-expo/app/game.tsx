@@ -4,7 +4,7 @@ import {
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 
-import { Region, Weather, TOURISTS, HITCHHIKERS } from '../src/constants/game';
+import { Region, Weather, TOURISTS, HITCHHIKERS, BOSSES } from '../src/constants/game';
 import {
   bInterval, cPenalty, decayRate, decayThreshold,
   flashInterval, generatePowerup, spotPoints, watchTier,
@@ -21,6 +21,7 @@ import AlphabetHunt from '../src/components/AlphabetHunt';
 import TouristOverlay from '../src/components/TouristOverlay';
 import PowerupList from '../src/components/PowerupList';
 import HitchhikerBanner from '../src/components/HitchhikerBanner';
+import BossFightOverlay from '../src/components/BossFightOverlay';
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
 
@@ -211,6 +212,7 @@ export default function GameScreen() {
 
   function pressA() {
     if (store.patrolVisible) return;
+    if (store.bossVisible) return;
     if (store.scoreB < 1 && !store.infiniteCredits) return;
 
     store.logAggression();
@@ -275,6 +277,12 @@ export default function GameScreen() {
 
     checkPatrolTrigger();
     checkDifficulty(store.scoreA + points);
+
+    // 1/150 chance of boss encounter
+    if (Math.random() < 1 / 150) {
+      const boss = pickRandom(BOSSES);
+      store.setBoss(boss.id);
+    }
   }
 
   // ── C: switch ────────────────────────────────────────────────────────────────
@@ -661,6 +669,22 @@ export default function GameScreen() {
 
   // ── Bingo callbacks ──────────────────────────────────────────────────────────
 
+  function onBossResult(won: boolean, pts: number, coins: number) {
+    const boss = BOSSES.find(b => b.id === store.bossId);
+    store.setBoss(null);
+    if (pts === 0 && coins === 0 && !won) {
+      // fled
+      store.addScoreA(-5);
+    } else if (won) {
+      store.addScoreA(pts);
+      persist.addCoins(coins);
+      doFlash(`Defeated ${boss?.name ?? 'Boss'}!`, '#ffd700');
+    } else {
+      store.addScoreA(-(boss?.losePts ?? 10));
+      doFlash(`${boss?.name ?? 'Boss'} wins...`, '#ff3333');
+    }
+  }
+
   function onBingo(coins: number, pts: number, label: string) {
     persist.addCoins(coins);
     store.addScoreA(pts);
@@ -691,7 +715,8 @@ export default function GameScreen() {
     powerups, flashVisible, flashText, flashColor,
     doublePoints, grassVisible, grassOn, infiniteCredits,
     patrolVisible, rivalScore, activeBadges: storeActiveBadges,
-    flashChallenge, hGeologist, hTrucker, hDJ } = store;
+    flashChallenge, hGeologist, hTrucker, hDJ,
+    bossVisible, bossId, hHunter } = store;
 
   const effectiveBadges = activeBadges;
 
@@ -874,6 +899,15 @@ export default function GameScreen() {
 
       {/* Alphabet hunt modal */}
       <AlphabetHunt visible={alphaVisible} onClose={() => setAlphaVisible(false)} />
+
+      {/* Boss fight modal */}
+      <BossFightOverlay
+        visible={bossVisible}
+        bossId={bossId}
+        purchases={purchases}
+        hunterActive={hHunter}
+        onResult={onBossResult}
+      />
     </View>
   );
 }

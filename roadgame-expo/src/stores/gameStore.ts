@@ -74,7 +74,12 @@ export interface GameState {
   hTrucker: boolean;
   hDJ: boolean;
   hWatchDouble: boolean;
+  hHunter: boolean;
   hitchhikerExpiry: number;
+
+  // Boss
+  bossVisible: boolean;
+  bossId: string | null;
 
   // Rival
   rivalScore: number;
@@ -140,6 +145,7 @@ type GameActions = {
   setTourist: (id: string | null) => void;
   setHitchhiker: (id: string | null, expiry?: number) => void;
   clearHitchhikerEffects: () => void;
+  setBoss: (id: string | null) => void;
   setRivalScore: (n: number) => void;
   setRivalFrozenTurns: (n: number) => void;
   decrementRivalSkip: () => void;
@@ -193,7 +199,8 @@ export const useGameStore = create<GameState & GameActions>((set, get) => ({
   touristVisible: false, touristId: null,
   hitchhikerVisible: false, hitchhikerId: null,
   hGeologist: false, hBirdwatcher: false, hTrucker: false,
-  hDJ: false, hWatchDouble: false, hitchhikerExpiry: 0,
+  hDJ: false, hWatchDouble: false, hHunter: false, hitchhikerExpiry: 0,
+  bossVisible: false, bossId: null,
   rivalScore: 0, rivalFrozenTurns: 0, rivalSkipCount: 0,
   patrolVisible: false,
   weather: 'sunny', region: 'forest', activeBadges: [],
@@ -327,12 +334,14 @@ export const useGameStore = create<GameState & GameActions>((set, get) => ({
       hTrucker: id === 'trucker',
       hDJ: id === 'dj',
       hWatchDouble: id === 'conspiracy',
+      hHunter: id === 'hunter',
     });
   },
   clearHitchhikerEffects: () => set({
     hGeologist: false, hBirdwatcher: false,
-    hTrucker: false, hDJ: false, hWatchDouble: false,
+    hTrucker: false, hDJ: false, hWatchDouble: false, hHunter: false,
   }),
+  setBoss: (id) => set({ bossVisible: id !== null, bossId: id }),
 
   setRivalScore: (n) => set({ rivalScore: n }),
   setRivalFrozenTurns: (n) => set({ rivalFrozenTurns: n }),
