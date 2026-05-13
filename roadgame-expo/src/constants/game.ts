@@ -43,7 +43,7 @@ export const BADGES: BadgeDef[] = [
   { id: 'banshee',     name: 'Banshee',     description: 'Flash penalties −20/30/40/50% by level' },
   { id: 'kirin',       name: 'Kirin',       description: 'Every 10/8/6/5th spot: 3× pts by level' },
   { id: 'manticore',   name: 'Manticore',   description: 'Challenge windows ×1.3/1.5/1.7/2.0 by level' },
-  { id: 'wendigo',     name: 'Wendigo',     description: 'Bingo: +10/15/20/25 bonus pts by level' },
+  { id: 'wendigo',     name: 'Wendigo',     description: 'Bingo: +20/25/30/40 pts by level' },
   { id: 'pegasus',     name: 'Pegasus',     description: 'Watch tick: +1/2/3/4 credits by level' },
 ];
 

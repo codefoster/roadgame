@@ -28,7 +28,7 @@ export default function BingoCard({ visible, onClose, onBingo }: Props) {
   const [prevLines, setPrevLines] = useState<number[]>([]);
 
   const wendigoLevel = badgeLevels['wendigo'] ?? 0;
-  const wendigoPts = activeBadges.includes('wendigo') ? 10 + wendigoLevel * 5 : 0;
+  const wendigoPts = activeBadges.includes('wendigo') ? ([20, 25, 30, 40][wendigoLevel] ?? 20) : 0;
 
   function handleMark(idx: number) {
     if (bingoMarked[idx]) return;
