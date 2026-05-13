@@ -24,6 +24,9 @@ export default function BossFightOverlay({ visible, bossId, purchases, hunterAct
 
   const hasKit   = purchases.includes('hunters_kit');
   const hasRelic = purchases.includes('power_relic');
+  // Kit stacks on top of relic: adds the same delta it gives over bare hands
+  const kitDelta = boss.kitChance - boss.bareHandsChance;
+  const bothChance = Math.min(0.95, relicChance + kitDelta);
 
   function fight(chance: number, isBarehands: boolean) {
     const won = Math.random() < chance;
@@ -112,7 +115,7 @@ export default function BossFightOverlay({ visible, bossId, purchases, hunterAct
             <Text style={styles.btnText}>Fight Bare Hands — {Math.round(bareChance * 100)}%</Text>
           </TouchableOpacity>
 
-          {hasKit && (
+          {hasKit && !hasRelic && (
             <TouchableOpacity
               style={[styles.kitBtn, boss.kitChance === boss.bareHandsChance && styles.btnDisabled]}
               onPress={() => fight(kitChance, false)}
@@ -124,10 +127,27 @@ export default function BossFightOverlay({ visible, bossId, purchases, hunterAct
             </TouchableOpacity>
           )}
 
-          {hasRelic && (
+          {hasRelic && !hasKit && (
             <TouchableOpacity style={styles.relicBtn} onPress={() => fight(relicChance, false)}>
               <Text style={styles.btnText}>Power Relic — {Math.round(relicChance * 100)}%</Text>
             </TouchableOpacity>
+          )}
+
+          {hasKit && hasRelic && (
+            <>
+              <TouchableOpacity style={styles.kitBtn} onPress={() => fight(kitChance, false)}>
+                <Text style={styles.btnText}>
+                  Hunter's Kit — {Math.round(kitChance * 100)}%
+                  {boss.kitChance === boss.bareHandsChance ? ' (no effect)' : ''}
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.relicBtn} onPress={() => fight(relicChance, false)}>
+                <Text style={styles.btnText}>Power Relic — {Math.round(relicChance * 100)}%</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.bothBtn} onPress={() => fight(bothChance, false)}>
+                <Text style={styles.btnText}>Both Together — {Math.round(bothChance * 100)}% ⚡</Text>
+              </TouchableOpacity>
+            </>
           )}
 
           {!boss.noFlee && (
@@ -161,6 +181,7 @@ const styles = StyleSheet.create({
   bareBtn:  { padding: 13, borderRadius: 8, backgroundColor: '#3a1a00', marginBottom: 8, alignItems: 'center' },
   kitBtn:   { padding: 13, borderRadius: 8, backgroundColor: '#1a3a00', marginBottom: 8, alignItems: 'center' },
   relicBtn: { padding: 13, borderRadius: 8, backgroundColor: '#1a004a', marginBottom: 8, alignItems: 'center' },
+  bothBtn:  { padding: 13, borderRadius: 8, backgroundColor: '#4a2a00', marginBottom: 8, alignItems: 'center', borderWidth: 1, borderColor: '#ffd700' },
   fleeBtn:  { padding: 9, borderRadius: 8, backgroundColor: '#222', marginTop: 2, alignItems: 'center' },
   continueBtn: { padding: 13, borderRadius: 8, backgroundColor: '#333', marginTop: 14, alignItems: 'center' },
   btnDisabled: { opacity: 0.5 },
