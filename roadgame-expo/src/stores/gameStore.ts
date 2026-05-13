@@ -94,6 +94,9 @@ export interface GameState {
 
   // Multiplayer
   mpOpponentScore: number;
+  mpTimeLeft: number;       // seconds remaining in timed match; 0 when not active
+  mpResult: 'win' | 'lose' | 'tie' | null;
+  mpZapped: boolean;        // opponent zapped us; can't spot for 5s
 
   // Shop one-time flags
   spareTireUsed: boolean;
@@ -150,6 +153,9 @@ type GameActions = {
   decrementRivalSkip: () => void;
   setPatrolVisible: (v: boolean) => void;
   setMpOpponentScore: (n: number) => void;
+  setMpTimeLeft: (n: number) => void;
+  setMpResult: (r: 'win' | 'lose' | 'tie' | null) => void;
+  setMpZapped: (v: boolean) => void;
   logAggression: () => void;
   markFlashBlockUsed: () => void;
   addLockedThreshold: (t: number) => void;
@@ -205,7 +211,7 @@ export const useGameStore = create<GameState & GameActions>((set, get) => ({
   patrolVisible: false,
   weather: 'sunny', region: 'forest', activeBadges: [],
   spotCount: 0, dragonFlashesUsed: 0, lockedThresholds: [],
-  aggressionLog: [], mpOpponentScore: 0,
+  aggressionLog: [], mpOpponentScore: 0, mpTimeLeft: 0, mpResult: null, mpZapped: false,
   spareTireUsed: false,
   roadEventId: null, roadEventExpiry: 0,
   headStart: false, creditBoost: false,
@@ -246,7 +252,7 @@ export const useGameStore = create<GameState & GameActions>((set, get) => ({
       patrolVisible: false,
       weather, region, activeBadges,
       spotCount: 0, dragonFlashesUsed: 0, lockedThresholds: [],
-      aggressionLog: [], mpOpponentScore: 0,
+      aggressionLog: [], mpOpponentScore: 0, mpTimeLeft: 0, mpResult: null, mpZapped: false,
       spareTireUsed: false,
       roadEventId: null, roadEventExpiry: 0,
       nextBadgeId: null,
@@ -349,6 +355,9 @@ export const useGameStore = create<GameState & GameActions>((set, get) => ({
 
   setPatrolVisible: (v) => set({ patrolVisible: v }),
   setMpOpponentScore: (n) => set({ mpOpponentScore: n }),
+  setMpTimeLeft: (n) => set({ mpTimeLeft: n }),
+  setMpResult: (r) => set({ mpResult: r }),
+  setMpZapped: (v) => set({ mpZapped: v }),
 
   logAggression: () => set((s) => {
     const now = Date.now();

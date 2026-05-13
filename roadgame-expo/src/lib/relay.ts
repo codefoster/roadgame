@@ -2,7 +2,7 @@
 // Room topic: roadgame-{ROOM_CODE}
 
 export type RelayMessage = {
-  type: 'join' | 'welcome' | 'start' | 'sync';
+  type: 'join' | 'welcome' | 'start' | 'sync' | 'zap';
   senderId: string;
   payload?: Record<string, unknown>;
 };

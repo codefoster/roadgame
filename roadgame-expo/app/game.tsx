@@ -60,7 +60,10 @@ export default function GameScreen() {
   const rivalTimerRef   = useRef<ReturnType<typeof setInterval> | null>(null);
   const patrolTimerRef  = useRef<ReturnType<typeof setTimeout>  | null>(null);
   const mpSyncRef       = useRef<ReturnType<typeof setInterval> | null>(null);
+  const mpCountdownRef  = useRef<ReturnType<typeof setInterval> | null>(null);
+  const mpZapRef        = useRef<ReturnType<typeof setTimeout>  | null>(null);
   const relayRef        = useRef<RelayClient | null>(null);
+  const MP_DURATION     = 180; // seconds
   const infiniteRef     = useRef<ReturnType<typeof setTimeout>  | null>(null);
   const doubleRef       = useRef<ReturnType<typeof setTimeout>  | null>(null);
   const grassRef        = useRef<ReturnType<typeof setTimeout>  | null>(null);
@@ -103,7 +106,8 @@ export default function GameScreen() {
   }, []);
 
   function clearAllTimers() {
-    [bTimerRef, decayTimerRef, rivalTimerRef, mpSyncRef].forEach(r => r.current && clearInterval(r.current));
+    [bTimerRef, decayTimerRef, rivalTimerRef, mpSyncRef, mpCountdownRef].forEach(r => r.current && clearInterval(r.current));
+    if (mpZapRef.current) clearTimeout(mpZapRef.current);
     [flashTimerRef, touristTimerRef, patrolTimerRef, infiniteRef, doubleRef, grassRef, patrolBlockRef, roadEventTimerRef]
       .forEach(r => r.current && clearTimeout(r.current));
     relayRef.current?.stop();
@@ -112,16 +116,49 @@ export default function GameScreen() {
   // ── multiplayer ─────────────────────────────────────────────────────────────
 
   function setupMultiplayer() {
+    const startTime = Date.now();
+
     const client = new RelayClient(params.roomCode!, (msg) => {
       if (msg.type === 'sync' && msg.payload) {
         store.setMpOpponentScore(msg.payload.score as number ?? 0);
       }
+      if (msg.type === 'zap') {
+        store.setMpZapped(true);
+        doFlash('⚡ Zapped by opponent!', '#ffff00');
+        if (mpZapRef.current) clearTimeout(mpZapRef.current);
+        mpZapRef.current = setTimeout(() => store.setMpZapped(false), 5000);
+      }
     });
     client.start();
     relayRef.current = client;
+
+    store.setMpTimeLeft(MP_DURATION);
+
     mpSyncRef.current = setInterval(() => {
       client.send('sync', { score: useGameStore.getState().scoreA });
     }, 2000);
+
+    mpCountdownRef.current = setInterval(() => {
+      const elapsed = Math.floor((Date.now() - startTime) / 1000);
+      const left = Math.max(0, MP_DURATION - elapsed);
+      store.setMpTimeLeft(left);
+      if (left === 0) {
+        clearInterval(mpCountdownRef.current!);
+        clearInterval(mpSyncRef.current!);
+        const gs = useGameStore.getState();
+        if (gs.scoreA > gs.mpOpponentScore) store.setMpResult('win');
+        else if (gs.scoreA < gs.mpOpponentScore) store.setMpResult('lose');
+        else store.setMpResult('tie');
+      }
+    }, 1000);
+  }
+
+  function pressZap() {
+    const s = useGameStore.getState();
+    if (s.scoreB < 15 || !relayRef.current) return;
+    store.addScoreB(-15);
+    relayRef.current.send('zap', {});
+    doFlash('⚡ Zapped opponent!', '#ff8800');
   }
 
   // ── B: watch ────────────────────────────────────────────────────────────────
@@ -223,6 +260,7 @@ export default function GameScreen() {
   function pressA() {
     if (store.patrolVisible) return;
     if (store.bossVisible) return;
+    if (store.mpZapped) return;
     if (store.scoreB < 1 && !store.infiniteCredits) return;
 
     store.logAggression();
@@ -693,6 +731,29 @@ export default function GameScreen() {
         </View>
       )}
 
+      {/* MP result overlay */}
+      {store.mpResult && (
+        <View style={styles.resultOverlay}>
+          <Text style={styles.resultText}>
+            {store.mpResult === 'win' ? '🏆 You Win!' : store.mpResult === 'lose' ? '😔 You Lose' : '🤝 Tie!'}
+          </Text>
+          <Text style={styles.resultSub}>
+            You: {scoreA}  ·  Opp: {store.mpOpponentScore}
+          </Text>
+          <TouchableOpacity style={styles.resultBtn} onPress={goToMenu}>
+            <Text style={styles.resultBtnText}>Back to Menu</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+
+      {/* Zap overlay */}
+      {store.mpZapped && (
+        <View style={styles.zapOverlay}>
+          <Text style={styles.zapText}>⚡ ZAPPED! ⚡</Text>
+          <Text style={styles.zapSub}>Can't spot for 5s</Text>
+        </View>
+      )}
+
       {/* Top bar */}
       <View style={styles.topBar}>
         <TouchableOpacity style={styles.menuBtn} onPress={goToMenu}>
@@ -702,7 +763,14 @@ export default function GameScreen() {
           {region} · {weather}
         </Text>
         {mpActive && (
-          <Text style={styles.opponentScore}>Opp: {store.mpOpponentScore}</Text>
+          <View style={styles.mpTopRight}>
+            <Text style={[styles.opponentScore, store.mpOpponentScore > scoreA && { color: '#f88' }]}>
+              {store.mpOpponentScore > scoreA ? '▲' : store.mpOpponentScore < scoreA ? '▼' : '='} Opp: {store.mpOpponentScore}
+            </Text>
+            <Text style={styles.mpTimer}>
+              {Math.floor(store.mpTimeLeft / 60)}:{String(store.mpTimeLeft % 60).padStart(2, '0')}
+            </Text>
+          </View>
         )}
       </View>
 
@@ -820,6 +888,16 @@ export default function GameScreen() {
         <TouchableOpacity style={styles.secondaryBtn} onPress={() => setAlphaVisible(true)}>
           <Text style={styles.secondaryBtnText}>A–Z</Text>
         </TouchableOpacity>
+        {mpActive && (
+          <TouchableOpacity
+            style={[styles.secondaryBtn, styles.zapBtn, scoreB < 15 && styles.zapBtnDisabled]}
+            onPress={pressZap}
+            disabled={scoreB < 15}
+          >
+            <Text style={styles.secondaryBtnText}>⚡ Zap</Text>
+            <Text style={styles.zapCost}>−15 credits</Text>
+          </TouchableOpacity>
+        )}
       </View>
 
       {/* Tourist prompt */}
@@ -890,7 +968,31 @@ const styles = StyleSheet.create({
   menuBtn: { backgroundColor: '#2a2a3a', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 6 },
   menuText: { color: '#aaa', fontSize: 13 },
   conditionText: { flex: 1, color: '#666', textAlign: 'center', fontSize: 12 },
-  opponentScore: { color: '#f44', fontSize: 13 },
+  opponentScore: { color: '#aaa', fontSize: 12 },
+  mpTopRight: { alignItems: 'flex-end' },
+  mpTimer: { color: '#ffdd44', fontSize: 14, fontWeight: 'bold' },
+
+  resultOverlay: {
+    position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
+    backgroundColor: 'rgba(0,0,0,0.88)', zIndex: 99,
+    justifyContent: 'center', alignItems: 'center',
+  },
+  resultText: { color: '#fff', fontSize: 40, fontWeight: 'bold', marginBottom: 12 },
+  resultSub: { color: '#aaa', fontSize: 18, marginBottom: 32 },
+  resultBtn: { backgroundColor: '#2a2a5a', paddingHorizontal: 32, paddingVertical: 14, borderRadius: 10 },
+  resultBtnText: { color: '#fff', fontSize: 18, fontWeight: 'bold' },
+
+  zapOverlay: {
+    position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
+    backgroundColor: 'rgba(80,80,0,0.55)', zIndex: 50,
+    justifyContent: 'center', alignItems: 'center', pointerEvents: 'none',
+  },
+  zapText: { color: '#ffff00', fontSize: 36, fontWeight: 'bold' },
+  zapSub: { color: '#ffdd88', fontSize: 16, marginTop: 8 },
+
+  zapBtn: { backgroundColor: '#3a2200', borderColor: '#ff8800', borderWidth: 1 },
+  zapBtnDisabled: { opacity: 0.4 },
+  zapCost: { color: '#ff8800', fontSize: 10, textAlign: 'center' },
 
   scoreRow: { flexDirection: 'row', paddingHorizontal: 8, marginBottom: 8 },
   scoreBox: { flex: 1, alignItems: 'center', padding: 8, backgroundColor: '#111', marginHorizontal: 2, borderRadius: 6 },
