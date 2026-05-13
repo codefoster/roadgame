@@ -145,10 +145,6 @@ export default function GameScreen() {
   function onBTick() {
     let credit = 1;
     if (weather === 'rainy') credit += 1;
-    if (hasBadge(activeBadges, 'pegasus')) {
-      credit += badgeLevel(persist.badgeLevels, 'pegasus');
-    }
-
     if (store.stackHold) {
       const newCount = store.stackHoldCount + 1;
       store.setEffect({ stackHoldCount: newCount });
@@ -669,18 +665,19 @@ export default function GameScreen() {
 
   // ── Bingo callbacks ──────────────────────────────────────────────────────────
 
-  function onBossResult(won: boolean, pts: number, coins: number) {
+  function onBossResult(fled: boolean, won: boolean, winPts: number, winCoins: number) {
     const boss = BOSSES.find(b => b.id === store.bossId);
     store.setBoss(null);
-    if (pts === 0 && coins === 0 && !won) {
-      // fled
-      store.addScoreA(-5);
+    if (fled) {
+      store.addScoreA(-(boss?.fleePts ?? 5));
     } else if (won) {
-      store.addScoreA(pts);
-      persist.addCoins(coins);
+      store.addScoreA(winPts);
+      persist.addCoins(winCoins);
       doFlash(`Defeated ${boss?.name ?? 'Boss'}!`, '#ffd700');
     } else {
       store.addScoreA(-(boss?.losePts ?? 10));
+      if ((boss?.loseCoins ?? 0) > 0) persist.spendCoins(boss!.loseCoins);
+      if ((boss?.loseCredits ?? 0) > 0) store.addScoreB(-boss!.loseCredits);
       doFlash(`${boss?.name ?? 'Boss'} wins...`, '#ff3333');
     }
   }
@@ -906,6 +903,7 @@ export default function GameScreen() {
         bossId={bossId}
         purchases={purchases}
         hunterActive={hHunter}
+        valkyrieBonus={hasBadge(activeBadges, 'valkyrie') ? [0.10, 0.15, 0.20, 0.25][badgeLevel(persist.badgeLevels, 'valkyrie')] ?? 0.10 : 0}
         onResult={onBossResult}
       />
     </View>

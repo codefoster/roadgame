@@ -44,7 +44,7 @@ export const BADGES: BadgeDef[] = [
   { id: 'kirin',       name: 'Kirin',       description: 'Every 10/8/6/5th spot: 3× pts by level' },
   { id: 'manticore',   name: 'Manticore',   description: 'Challenge windows ×1.3/1.5/1.7/2.0 by level' },
   { id: 'wendigo',     name: 'Wendigo',     description: 'Bingo: +20/25/30/40 pts by level' },
-  { id: 'pegasus',     name: 'Pegasus',     description: 'Watch tick: +1/2/3/4 credits by level' },
+  { id: 'valkyrie',   name: 'Valkyrie',    description: 'Boss fight win chance +10/15/20/25% by level' },
 ];
 
 export const BADGE_UPGRADE_COSTS = [500, 750, 1000] as const; // costs for levels 1, 2, 3
@@ -187,21 +187,100 @@ export interface BossDef {
   id: string;
   name: string;
   description: string;
+  powerName: string;
+  powerDesc: string;
   bareHandsChance: number;
   kitChance: number;
   relicChance: number;
   winPts: number;
   winCoins: number;
   losePts: number;
+  loseCoins: number;
+  loseCredits: number;
+  noFlee: boolean;
+  fleePts: number;
+  bareHandsDouble: boolean; // win bare-handed gives 2× pts
 }
 
 export const BOSSES: BossDef[] = [
-  { id: 'road_goblin',    name: 'Road Goblin',    description: 'A sneaky goblin darts across your path!',
-    bareHandsChance: 0.35, kitChance: 0.60, relicChance: 0.85, winPts: 20, winCoins: 8,  losePts: 10 },
-  { id: 'forest_troll',   name: 'Forest Troll',   description: 'A massive troll blocks the road, demanding tribute!',
-    bareHandsChance: 0.25, kitChance: 0.52, relicChance: 0.78, winPts: 35, winCoins: 12, losePts: 20 },
-  { id: 'mountain_giant', name: 'Mountain Giant', description: 'A thundering giant shakes the earth beneath your feet!',
-    bareHandsChance: 0.15, kitChance: 0.45, relicChance: 0.72, winPts: 55, winCoins: 20, losePts: 35 },
-  { id: 'void_wraith',    name: 'Void Wraith',    description: 'A spectral terror from beyond emerges from the shadows!',
-    bareHandsChance: 0.08, kitChance: 0.38, relicChance: 0.65, winPts: 80, winCoins: 35, losePts: 55 },
+  {
+    id: 'road_goblin', name: 'Road Goblin',
+    description: "A sneaky goblin darts across your path, eyeing your coins!",
+    powerName: 'Pickpocket', powerDesc: 'Lose: also lose 5 coins',
+    bareHandsChance: 0.40, kitChance: 0.65, relicChance: 0.88,
+    winPts: 20, winCoins: 8, losePts: 8, loseCoins: 5, loseCredits: 0,
+    noFlee: false, fleePts: 5, bareHandsDouble: false,
+  },
+  {
+    id: 'swamp_witch', name: 'Swamp Witch',
+    description: 'A cackling witch casts a hex, clouding your fighting instincts!',
+    powerName: 'Hex', powerDesc: 'Bare hands win chance greatly reduced',
+    bareHandsChance: 0.18, kitChance: 0.52, relicChance: 0.80,
+    winPts: 28, winCoins: 10, losePts: 15, loseCoins: 0, loseCredits: 0,
+    noFlee: false, fleePts: 5, bareHandsDouble: false,
+  },
+  {
+    id: 'forest_troll', name: 'Forest Troll',
+    description: 'A massive troll blocks the road. It will chase you if you run!',
+    powerName: 'Stubborn', powerDesc: 'Fleeing costs 30 pts',
+    bareHandsChance: 0.28, kitChance: 0.55, relicChance: 0.78,
+    winPts: 35, winCoins: 12, losePts: 22, loseCoins: 0, loseCredits: 0,
+    noFlee: false, fleePts: 30, bareHandsDouble: false,
+  },
+  {
+    id: 'stone_gargoyle', name: 'Stone Gargoyle',
+    description: 'A living statue descends from a bridge, impervious to basic weapons!',
+    powerName: 'Armored', powerDesc: "Hunter's Kit has no effect",
+    bareHandsChance: 0.25, kitChance: 0.25, relicChance: 0.72,
+    winPts: 38, winCoins: 14, losePts: 25, loseCoins: 0, loseCredits: 0,
+    noFlee: false, fleePts: 5, bareHandsDouble: false,
+  },
+  {
+    id: 'sand_serpent', name: 'Sand Serpent',
+    description: 'A massive serpent erupts from the road! Its venom drains your energy.',
+    powerName: 'Venomous', powerDesc: 'Lose: also lose 15 credits',
+    bareHandsChance: 0.22, kitChance: 0.48, relicChance: 0.72,
+    winPts: 45, winCoins: 16, losePts: 28, loseCoins: 0, loseCredits: 15,
+    noFlee: false, fleePts: 5, bareHandsDouble: false,
+  },
+  {
+    id: 'mountain_giant', name: 'Mountain Giant',
+    description: 'A thundering giant shakes the earth! Bare-handed victory earns glory!',
+    powerName: 'Brute Challenge', powerDesc: 'Win bare-handed: 2× pts',
+    bareHandsChance: 0.18, kitChance: 0.45, relicChance: 0.70,
+    winPts: 55, winCoins: 20, losePts: 35, loseCoins: 0, loseCredits: 0,
+    noFlee: false, fleePts: 5, bareHandsDouble: true,
+  },
+  {
+    id: 'frost_wraith', name: 'Frost Wraith',
+    description: 'A spectral horror freezes the air. You feel rooted to the spot!',
+    powerName: 'Frozen', powerDesc: 'Cannot flee',
+    bareHandsChance: 0.15, kitChance: 0.42, relicChance: 0.68,
+    winPts: 60, winCoins: 22, losePts: 40, loseCoins: 0, loseCredits: 0,
+    noFlee: true, fleePts: 5, bareHandsDouble: false,
+  },
+  {
+    id: 'shadow_drake', name: 'Shadow Drake',
+    description: 'A drake made of pure shadow. Ancient magic dissolves in its presence!',
+    powerName: 'Shadow Veil', powerDesc: 'Power Relic is less effective',
+    bareHandsChance: 0.12, kitChance: 0.40, relicChance: 0.55,
+    winPts: 65, winCoins: 25, losePts: 45, loseCoins: 0, loseCredits: 0,
+    noFlee: false, fleePts: 5, bareHandsDouble: false,
+  },
+  {
+    id: 'void_wraith', name: 'Void Wraith',
+    description: 'A horror from the void phases in and out of reality.',
+    powerName: 'Phase Shift', powerDesc: 'All win chances reduced by 10%',
+    bareHandsChance: 0.08, kitChance: 0.32, relicChance: 0.58,
+    winPts: 80, winCoins: 35, losePts: 55, loseCoins: 0, loseCredits: 0,
+    noFlee: false, fleePts: 5, bareHandsDouble: false,
+  },
+  {
+    id: 'ancient_titan', name: 'Ancient Titan',
+    description: 'An unstoppable force of nature. There is no escape. There is no mercy.',
+    powerName: 'Colossus', powerDesc: 'Cannot flee. Maximum risk and reward.',
+    bareHandsChance: 0.05, kitChance: 0.28, relicChance: 0.52,
+    winPts: 120, winCoins: 50, losePts: 80, loseCoins: 0, loseCredits: 0,
+    noFlee: true, fleePts: 5, bareHandsDouble: false,
+  },
 ];

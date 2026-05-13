@@ -13,7 +13,7 @@ const BINGO_LINES = [
 const ALL_BADGES = [
   'bigfoot','phoenix','unicorn','kraken','yeti','dragon','leprechaun',
   'mermaid','sphinx','centaur','griffin','basilisk','selkie','thunderbird',
-  'nessie','banshee','kirin','manticore','wendigo','pegasus',
+  'nessie','banshee','kirin','manticore','wendigo','valkyrie',
 ];
 
 interface Props {

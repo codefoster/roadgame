@@ -7,36 +7,41 @@ interface Props {
   bossId: string | null;
   purchases: string[];
   hunterActive: boolean;
-  onResult: (won: boolean, pts: number, coins: number) => void;
+  valkyrieBonus: number; // 0–0.25 based on badge level
+  onResult: (fled: boolean, won: boolean, winPts: number, winCoins: number) => void;
 }
 
-export default function BossFightOverlay({ visible, bossId, purchases, hunterActive, onResult }: Props) {
-  const [result, setResult] = useState<'win' | 'lose' | null>(null);
+export default function BossFightOverlay({ visible, bossId, purchases, hunterActive, valkyrieBonus, onResult }: Props) {
+  const [result, setResult] = useState<{ won: boolean; winPts: number; winCoins: number } | null>(null);
 
   const boss = BOSSES.find(b => b.id === bossId);
   if (!boss) return null;
 
-  const hunterBonus = hunterActive ? 0.20 : 0;
-  const bareChance  = Math.min(0.95, boss.bareHandsChance + hunterBonus);
-  const kitChance   = Math.min(0.95, boss.kitChance + hunterBonus);
-  const relicChance = Math.min(0.95, boss.relicChance + hunterBonus);
+  const bonus = (hunterActive ? 0.20 : 0) + valkyrieBonus;
+  const bareChance  = Math.min(0.95, boss.bareHandsChance + bonus);
+  const kitChance   = Math.min(0.95, boss.kitChance + bonus);
+  const relicChance = Math.min(0.95, boss.relicChance + bonus);
 
   const hasKit   = purchases.includes('hunters_kit');
   const hasRelic = purchases.includes('power_relic');
 
-  function fight(chance: number) {
-    setResult(Math.random() < chance ? 'win' : 'lose');
+  function fight(chance: number, isBarehands: boolean) {
+    const won = Math.random() < chance;
+    const pts = won
+      ? (isBarehands && boss.bareHandsDouble ? boss.winPts * 2 : boss.winPts)
+      : 0;
+    setResult({ won, winPts: pts, winCoins: won ? boss.winCoins : 0 });
   }
 
   function dismiss() {
-    const won = result === 'win';
+    if (!result) return;
     setResult(null);
-    onResult(won, won ? boss.winPts : 0, won ? boss.winCoins : 0);
+    onResult(false, result.won, result.winPts, result.winCoins);
   }
 
   function flee() {
     setResult(null);
-    onResult(false, 0, 0);
+    onResult(true, false, 0, 0);
   }
 
   if (result !== null) {
@@ -44,17 +49,24 @@ export default function BossFightOverlay({ visible, bossId, purchases, hunterAct
       <Modal visible={visible} transparent animationType="fade">
         <View style={styles.backdrop}>
           <View style={styles.card}>
-            <Text style={result === 'win' ? styles.winTitle : styles.loseTitle}>
-              {result === 'win' ? '⚔️ VICTORY!' : '💀 DEFEATED!'}
+            <Text style={result.won ? styles.winTitle : styles.loseTitle}>
+              {result.won ? '⚔️ VICTORY!' : '💀 DEFEATED!'}
             </Text>
             <Text style={styles.bossName}>{boss.name}</Text>
-            {result === 'win' ? (
+            {result.won ? (
               <>
-                <Text style={styles.rewardText}>+{boss.winPts} pts</Text>
-                <Text style={styles.rewardText}>+{boss.winCoins} coins</Text>
+                <Text style={styles.rewardLine}>+{result.winPts} pts</Text>
+                <Text style={styles.rewardLine}>+{result.winCoins} coins</Text>
+                {boss.bareHandsDouble && result.winPts > boss.winPts && (
+                  <Text style={styles.bonusLine}>⚡ Bare-handed glory bonus!</Text>
+                )}
               </>
             ) : (
-              <Text style={styles.penaltyText}>−{boss.losePts} pts</Text>
+              <>
+                <Text style={styles.penaltyLine}>−{boss.losePts} pts</Text>
+                {boss.loseCoins > 0 && <Text style={styles.penaltyLine}>−{boss.loseCoins} coins (pickpocket!)</Text>}
+                {boss.loseCredits > 0 && <Text style={styles.penaltyLine}>−{boss.loseCredits} credits (venomous!)</Text>}
+              </>
             )}
             <TouchableOpacity style={styles.continueBtn} onPress={dismiss}>
               <Text style={styles.btnText}>Continue</Text>
@@ -73,34 +85,56 @@ export default function BossFightOverlay({ visible, bossId, purchases, hunterAct
           <Text style={styles.bossName}>{boss.name}</Text>
           <Text style={styles.bossDesc}>{boss.description}</Text>
 
-          {hunterActive && (
-            <Text style={styles.hunterBadge}>🏹 Hunter: +20% win chance</Text>
-          )}
-
-          <View style={styles.rewards}>
-            <Text style={styles.rewardText}>Win: +{boss.winPts} pts · +{boss.winCoins} coins</Text>
-            <Text style={styles.penaltyText}>Lose: −{boss.losePts} pts</Text>
+          <View style={styles.powerBadge}>
+            <Text style={styles.powerName}>{boss.powerName}</Text>
+            <Text style={styles.powerDesc}>{boss.powerDesc}</Text>
           </View>
 
-          <TouchableOpacity style={styles.bareBtn} onPress={() => fight(bareChance)}>
-            <Text style={styles.btnText}>Fight Bare Hands — {Math.round(bareChance * 100)}% win</Text>
+          {(hunterActive || valkyrieBonus > 0) && (
+            <View style={styles.bonusRow}>
+              {hunterActive && <Text style={styles.bonusChip}>🏹 Hunter +20%</Text>}
+              {valkyrieBonus > 0 && <Text style={styles.bonusChip}>⚔️ Valkyrie +{Math.round(valkyrieBonus * 100)}%</Text>}
+            </View>
+          )}
+
+          <View style={styles.rewardRow}>
+            <Text style={styles.rewardLine}>Win: +{boss.winPts} pts · +{boss.winCoins} coins
+              {boss.bareHandsDouble ? ' (2× bare-handed)' : ''}
+            </Text>
+            <Text style={styles.penaltyLine}>
+              Lose: −{boss.losePts} pts
+              {boss.loseCoins > 0 ? ` · −${boss.loseCoins} coins` : ''}
+              {boss.loseCredits > 0 ? ` · −${boss.loseCredits} credits` : ''}
+            </Text>
+          </View>
+
+          <TouchableOpacity style={styles.bareBtn} onPress={() => fight(bareChance, true)}>
+            <Text style={styles.btnText}>Fight Bare Hands — {Math.round(bareChance * 100)}%</Text>
           </TouchableOpacity>
 
           {hasKit && (
-            <TouchableOpacity style={styles.kitBtn} onPress={() => fight(kitChance)}>
-              <Text style={styles.btnText}>Use Hunter's Kit — {Math.round(kitChance * 100)}% win</Text>
+            <TouchableOpacity
+              style={[styles.kitBtn, boss.kitChance === boss.bareHandsChance && styles.btnDisabled]}
+              onPress={() => fight(kitChance, false)}
+            >
+              <Text style={styles.btnText}>
+                Hunter's Kit — {Math.round(kitChance * 100)}%
+                {boss.kitChance === boss.bareHandsChance ? ' (no effect)' : ''}
+              </Text>
             </TouchableOpacity>
           )}
 
           {hasRelic && (
-            <TouchableOpacity style={styles.relicBtn} onPress={() => fight(relicChance)}>
-              <Text style={styles.btnText}>Use Power Relic — {Math.round(relicChance * 100)}% win</Text>
+            <TouchableOpacity style={styles.relicBtn} onPress={() => fight(relicChance, false)}>
+              <Text style={styles.btnText}>Power Relic — {Math.round(relicChance * 100)}%</Text>
             </TouchableOpacity>
           )}
 
-          <TouchableOpacity style={styles.fleeBtn} onPress={flee}>
-            <Text style={styles.fleeBtnText}>Flee (−5 pts)</Text>
-          </TouchableOpacity>
+          {!boss.noFlee && (
+            <TouchableOpacity style={styles.fleeBtn} onPress={flee}>
+              <Text style={styles.fleeBtnText}>Flee (−{boss.fleePts} pts)</Text>
+            </TouchableOpacity>
+          )}
         </View>
       </View>
     </Modal>
@@ -108,28 +142,28 @@ export default function BossFightOverlay({ visible, bossId, purchases, hunterAct
 }
 
 const styles = StyleSheet.create({
-  backdrop: {
-    flex: 1, backgroundColor: 'rgba(0,0,0,0.85)',
-    justifyContent: 'center', padding: 20,
-  },
-  card: {
-    backgroundColor: '#1a0a00', borderRadius: 14, padding: 20,
-    borderWidth: 2, borderColor: '#8b0000',
-  },
-  title: { color: '#ff4400', fontSize: 18, fontWeight: 'bold', textAlign: 'center', marginBottom: 6 },
+  backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.88)', justifyContent: 'center', padding: 20 },
+  card: { backgroundColor: '#1a0a00', borderRadius: 14, padding: 20, borderWidth: 2, borderColor: '#8b0000' },
+  title: { color: '#ff4400', fontSize: 16, fontWeight: 'bold', textAlign: 'center', marginBottom: 4 },
   bossName: { color: '#fff', fontSize: 22, fontWeight: 'bold', textAlign: 'center', marginBottom: 6 },
-  bossDesc: { color: '#ccc', fontSize: 13, textAlign: 'center', marginBottom: 12 },
-  hunterBadge: { color: '#88ff88', fontSize: 12, textAlign: 'center', marginBottom: 10 },
-  rewards: { marginBottom: 16, alignItems: 'center' },
-  rewardText: { color: '#ffd700', fontSize: 13, marginBottom: 2 },
-  penaltyText: { color: '#ff6666', fontSize: 13 },
-  winTitle: { color: '#ffd700', fontSize: 26, fontWeight: 'bold', textAlign: 'center', marginBottom: 8 },
-  loseTitle: { color: '#ff3333', fontSize: 26, fontWeight: 'bold', textAlign: 'center', marginBottom: 8 },
-  bareBtn:  { padding: 14, borderRadius: 8, backgroundColor: '#3a1a00', marginBottom: 8, alignItems: 'center' },
-  kitBtn:   { padding: 14, borderRadius: 8, backgroundColor: '#1a3a00', marginBottom: 8, alignItems: 'center' },
-  relicBtn: { padding: 14, borderRadius: 8, backgroundColor: '#1a004a', marginBottom: 8, alignItems: 'center' },
-  fleeBtn:  { padding: 10, borderRadius: 8, backgroundColor: '#222', marginTop: 4, alignItems: 'center' },
-  continueBtn: { padding: 14, borderRadius: 8, backgroundColor: '#333', marginTop: 16, alignItems: 'center' },
-  btnText:  { color: '#fff', fontWeight: 'bold', fontSize: 14 },
-  fleeBtnText: { color: '#888', fontSize: 13 },
+  bossDesc: { color: '#ccc', fontSize: 12, textAlign: 'center', marginBottom: 10 },
+  powerBadge: { backgroundColor: '#2a0a0a', borderRadius: 8, padding: 8, marginBottom: 10, alignItems: 'center' },
+  powerName: { color: '#ff8844', fontWeight: 'bold', fontSize: 13 },
+  powerDesc: { color: '#ffaa88', fontSize: 11, marginTop: 2 },
+  bonusRow: { flexDirection: 'row', justifyContent: 'center', gap: 8, marginBottom: 8 },
+  bonusChip: { color: '#88ff88', fontSize: 11, backgroundColor: '#0a2a0a', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 10 },
+  rewardRow: { alignItems: 'center', marginBottom: 14 },
+  rewardLine: { color: '#ffd700', fontSize: 12, marginBottom: 2 },
+  penaltyLine: { color: '#ff7777', fontSize: 12 },
+  bonusLine: { color: '#ffdd44', fontSize: 12, marginTop: 4 },
+  winTitle: { color: '#ffd700', fontSize: 24, fontWeight: 'bold', textAlign: 'center', marginBottom: 8 },
+  loseTitle: { color: '#ff3333', fontSize: 24, fontWeight: 'bold', textAlign: 'center', marginBottom: 8 },
+  bareBtn:  { padding: 13, borderRadius: 8, backgroundColor: '#3a1a00', marginBottom: 8, alignItems: 'center' },
+  kitBtn:   { padding: 13, borderRadius: 8, backgroundColor: '#1a3a00', marginBottom: 8, alignItems: 'center' },
+  relicBtn: { padding: 13, borderRadius: 8, backgroundColor: '#1a004a', marginBottom: 8, alignItems: 'center' },
+  fleeBtn:  { padding: 9, borderRadius: 8, backgroundColor: '#222', marginTop: 2, alignItems: 'center' },
+  continueBtn: { padding: 13, borderRadius: 8, backgroundColor: '#333', marginTop: 14, alignItems: 'center' },
+  btnDisabled: { opacity: 0.5 },
+  btnText: { color: '#fff', fontWeight: 'bold', fontSize: 14 },
+  fleeBtnText: { color: '#777', fontSize: 12 },
 });
