@@ -152,10 +152,10 @@ export function spotPoints(
   // Birdwatcher: 30% chance of rare sighting (3×)
   if (hitchhikerBirdwatcher && Math.random() < 0.3) pts *= 3;
 
-  // Thunderbird (rainy: +1–4)
+  // Thunderbird (rainy: flat bonus by level)
   if (weather === 'rainy' && activeBadges.includes('thunderbird')) {
     const level = badgeLevels['thunderbird'] ?? 0;
-    pts += randInt(1, 1 + level + 1);
+    pts += [2, 4, 5, 7][level] ?? 2;
   }
 
   // Kirin (every Nth spot: 3×)

@@ -38,7 +38,7 @@ export const BADGES: BadgeDef[] = [
   { id: 'griffin',     name: 'Griffin',     description: '15–30% chance per spot of free credit' },
   { id: 'basilisk',    name: 'Basilisk',    description: 'Freeze rival 20/25/30/35 turns at game start' },
   { id: 'selkie',      name: 'Selkie',      description: 'Switch penalty −10/20/35/50% by level' },
-  { id: 'thunderbird', name: 'Thunderbird', description: 'Rainy: +1–2/3/4/5 pts per spot by level' },
+  { id: 'thunderbird', name: 'Thunderbird', description: 'Rainy: +2/4/5/7 pts per spot by level' },
   { id: 'nessie',      name: 'Nessie',      description: '+1/2/3/4 pts each time Watch is committed' },
   { id: 'banshee',     name: 'Banshee',     description: 'Flash penalties 30/45/60% smaller by level' },
   { id: 'kirin',       name: 'Kirin',       description: 'Every 10/8/6/5th spot: 3× pts by level' },
