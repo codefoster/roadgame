@@ -376,11 +376,14 @@ export default function GameScreen() {
     const score = store.scoreA;
     const penMult = flashPenaltyMultiplier(activeBadges, persist.badgeLevels);
 
-    // Dragon badge: block first flash
-    if (hasBadge(activeBadges, 'dragon') && !store.flashBlockUsed) {
+    // Dragon: block every other flash for the first 5 flash events (1st, 3rd, 5th blocked)
+    if (hasBadge(activeBadges, 'dragon') && store.dragonFlashesUsed < 5) {
+      const newCount = store.dragonFlashesUsed + 1;
       store.markFlashBlockUsed();
-      scheduleFlash();
-      return;
+      if (newCount % 2 === 1) { // odd events (1,3,5) are blocked
+        scheduleFlash();
+        return;
+      }
     }
 
     const flashTypes = ['switch', 'nature', 'manmade', 'forced_c', 'steal', 'challenge_spot', 'challenge_watch', 'challenge_l2', 'challenge_switch'];

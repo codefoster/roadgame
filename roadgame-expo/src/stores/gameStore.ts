@@ -89,7 +89,7 @@ export interface GameState {
   region: Region;
   activeBadges: string[];
   spotCount: number;
-  flashBlockUsed: boolean;
+  dragonFlashesUsed: number;
   lockedThresholds: number[];
   aggressionLog: number[]; // timestamps of aggressive presses
 
@@ -197,7 +197,7 @@ export const useGameStore = create<GameState & GameActions>((set, get) => ({
   rivalScore: 0, rivalFrozenTurns: 0, rivalSkipCount: 0,
   patrolVisible: false,
   weather: 'sunny', region: 'forest', activeBadges: [],
-  spotCount: 0, flashBlockUsed: false, lockedThresholds: [],
+  spotCount: 0, dragonFlashesUsed: 0, lockedThresholds: [],
   aggressionLog: [], mpOpponentScore: 0,
   headStart: false, creditBoost: false,
 
@@ -233,7 +233,7 @@ export const useGameStore = create<GameState & GameActions>((set, get) => ({
       rivalScore: 0, rivalFrozenTurns: 0, rivalSkipCount,
       patrolVisible: false,
       weather, region, activeBadges,
-      spotCount: 0, flashBlockUsed: false, lockedThresholds: [],
+      spotCount: 0, dragonFlashesUsed: 0, lockedThresholds: [],
       aggressionLog: [], mpOpponentScore: 0,
       headStart: purchases.includes('head_start'),
       creditBoost: purchases.includes('credit_boost'),
@@ -342,7 +342,7 @@ export const useGameStore = create<GameState & GameActions>((set, get) => ({
     return { aggressionLog: [...recent, now] };
   }),
 
-  markFlashBlockUsed: () => set({ flashBlockUsed: true }),
+  markFlashBlockUsed: () => set((s) => ({ dragonFlashesUsed: s.dragonFlashesUsed + 1 })),
   addLockedThreshold: (t) => set((s) => ({
     lockedThresholds: s.lockedThresholds.includes(t)
       ? s.lockedThresholds

@@ -250,7 +250,10 @@ export function rivalAction(
     case 'challenge':delta = randInt(5, 12); break;
     case 'penalty':  delta = -randInt(2, 6); break;
   }
-  if (hasKraken) delta = Math.max(delta - (1 + krakenLevel), 0);
+  if (hasKraken) {
+    const reduction = [2, 3, 5, 5][Math.min(3, krakenLevel)];
+    delta = Math.max(delta - reduction, 0);
+  }
   return { newRivalScore: Math.max(0, rivalScore + delta), frozenTurns: 0 };
 }
 
