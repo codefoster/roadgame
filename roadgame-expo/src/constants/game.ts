@@ -40,7 +40,7 @@ export const BADGES: BadgeDef[] = [
   { id: 'selkie',      name: 'Selkie',      description: 'Switch penalty −10/20/35/50% by level' },
   { id: 'thunderbird', name: 'Thunderbird', description: 'Rainy: +2/4/5/7 pts per spot by level' },
   { id: 'nessie',      name: 'Nessie',      description: '+1/2/3/4 pts each time Watch is committed' },
-  { id: 'banshee',     name: 'Banshee',     description: 'Flash penalties 30/45/60% smaller by level' },
+  { id: 'banshee',     name: 'Banshee',     description: 'Flash penalties −20/30/40/50% by level' },
   { id: 'kirin',       name: 'Kirin',       description: 'Every 10/8/6/5th spot: 3× pts by level' },
   { id: 'manticore',   name: 'Manticore',   description: 'All challenge windows 1.5× to 3× longer' },
   { id: 'wendigo',     name: 'Wendigo',     description: 'Bingo: +10/15/20/25 bonus pts by level' },

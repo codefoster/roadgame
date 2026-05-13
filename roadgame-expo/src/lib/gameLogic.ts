@@ -188,7 +188,7 @@ export function flashPenaltyMultiplier(
   let mult = 1;
   if (activeBadges.includes('banshee')) {
     const level = badgeLevels['banshee'] ?? 0;
-    mult *= 1 - ([0.3, 0.45, 0.6][level] ?? 0.3);
+    mult *= 1 - ([0.20, 0.30, 0.40, 0.50][level] ?? 0.20);
   }
   if (activeBadges.includes('dragon')) {
     const level = badgeLevels['dragon'] ?? 0;
