@@ -4,7 +4,7 @@ import {
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 
-import { Region, Weather, TOURISTS, HITCHHIKERS, BOSSES } from '../src/constants/game';
+import { Region, Weather, TOURISTS, HITCHHIKERS, BOSSES, BADGES } from '../src/constants/game';
 import {
   bInterval, cPenalty, decayRate, decayThreshold,
   flashInterval, generatePowerup, spotPoints, watchTier,
@@ -87,6 +87,12 @@ export default function GameScreen() {
     if (activeBadges.includes('phoenix')) {
       const level = badgeLevel(persist.badgeLevels, 'phoenix');
       persist.setCoinFloor(5 + level * 5);
+    }
+
+    // CB Radio: pre-pick next badge reward
+    if (purchases.includes('cb_radio') && Math.random() < 0.12) {
+      const unowned = BADGES.map(b => b.id).filter(id => !persist.badges.includes(id));
+      if (unowned.length > 0) store.setNextBadge(pickRandom(unowned));
     }
 
     scheduleFlash();
@@ -532,7 +538,7 @@ export default function GameScreen() {
   // ── Hitchhiker ────────────────────────────────────────────────────────────────
 
   useEffect(() => {
-    const delay = randInt(45000, 90000);
+    const delay = purchases.includes('cb_radio') ? randInt(25000, 55000) : randInt(45000, 90000);
     const t = setTimeout(() => {
       const h = pickRandom(HITCHHIKERS);
       setHitchhikerPopup({ name: h.name, description: h.description, duration: h.duration });
@@ -583,21 +589,28 @@ export default function GameScreen() {
     if (pressesLastSecond < 4) return;
     const aggression = Math.min(1, pressesLastSecond / 4);
     if (checkPatrol(region, aggression)) {
-      store.setPatrolVisible(true);
-      // Pause B ticks for the duration of the stop
-      if (bTimerRef.current) {
-        clearInterval(bTimerRef.current);
-        bTimerRef.current = null;
-        patrolPausedWatch.current = true;
+      if (purchases.includes('cb_radio')) {
+        store.setFlash('📻 Breaker — smokey ahead!', '#ffaa00');
+        setTimeout(() => store.clearFlash(), 3000);
       }
-      patrolBlockRef.current = setTimeout(() => {
-        store.setPatrolVisible(false);
-        if (patrolPausedWatch.current) {
-          patrolPausedWatch.current = false;
-          const interval = bInterval(store.scoreA, hasBadge(activeBadges, 'centaur'), badgeLevel(persist.badgeLevels, 'centaur'));
-          bTimerRef.current = setInterval(onBTick, store.hWatchDouble ? interval / 2 : interval);
+      const patrolDelay = purchases.includes('cb_radio') ? 5000 : 0;
+      setTimeout(() => {
+        store.setPatrolVisible(true);
+        // Pause B ticks for the duration of the stop
+        if (bTimerRef.current) {
+          clearInterval(bTimerRef.current);
+          bTimerRef.current = null;
+          patrolPausedWatch.current = true;
         }
-      }, 15000);
+        patrolBlockRef.current = setTimeout(() => {
+          store.setPatrolVisible(false);
+          if (patrolPausedWatch.current) {
+            patrolPausedWatch.current = false;
+            const interval = bInterval(store.scoreA, hasBadge(activeBadges, 'centaur'), badgeLevel(persist.badgeLevels, 'centaur'));
+            bTimerRef.current = setInterval(onBTick, store.hWatchDouble ? interval / 2 : interval);
+          }
+        }, 15000);
+      }, patrolDelay);
     }
   }
 
@@ -669,7 +682,7 @@ export default function GameScreen() {
     const boss = BOSSES.find(b => b.id === store.bossId);
     store.setBoss(null);
     if (fled) {
-      store.addScoreA(-(boss?.fleePts ?? 5));
+      persist.spendCoins(boss?.fleeCoins ?? 5);
     } else if (won) {
       store.addScoreA(winPts);
       persist.addCoins(winCoins);
@@ -713,7 +726,7 @@ export default function GameScreen() {
     doublePoints, grassVisible, grassOn, infiniteCredits,
     patrolVisible, rivalScore, activeBadges: storeActiveBadges,
     flashChallenge, hGeologist, hTrucker, hDJ,
-    bossVisible, bossId, hHunter } = store;
+    bossVisible, bossId, hHunter, nextBadgeId } = store;
 
   const effectiveBadges = activeBadges;
 
@@ -787,6 +800,11 @@ export default function GameScreen() {
         {flashChallenge && (
           <Text style={[styles.effectChip, { backgroundColor: '#333300' }]}>
             {flashChallenge.type}: {flashChallenge.progress}/{flashChallenge.target}
+          </Text>
+        )}
+        {nextBadgeId && (
+          <Text style={[styles.effectChip, { backgroundColor: '#1a3300' }]}>
+            📻 {BADGES.find(b => b.id === nextBadgeId)?.name ?? nextBadgeId}
           </Text>
         )}
       </ScrollView>

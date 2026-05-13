@@ -23,7 +23,7 @@ interface Props {
 }
 
 export default function BingoCard({ visible, onClose, onBingo }: Props) {
-  const { bingoCard, bingoMarked, markBingo, resetBingo, goldenTiles, activeBadges, addScoreA } = useGameStore();
+  const { bingoCard, bingoMarked, markBingo, resetBingo, goldenTiles, activeBadges, addScoreA, nextBadgeId, setNextBadge } = useGameStore();
   const { addCoins, earnBadge, badges, badgeLevels } = usePersistentStore();
   const [prevLines, setPrevLines] = useState<number[]>([]);
 
@@ -53,7 +53,15 @@ export default function BingoCard({ visible, onClose, onBingo }: Props) {
       pts = newLines.length * (10 + wendigoPts);
       label = 'DOUBLE GOLDEN BINGO!';
       const unowned = ALL_BADGES.filter(id => !badges.includes(id));
-      if (unowned.length > 0) earnBadge(pickRandom(unowned));
+      if (unowned.length > 0) {
+        const badgeToEarn = nextBadgeId ?? pickRandom(unowned);
+        earnBadge(badgeToEarn);
+        // Re-roll next badge preview for CB Radio
+        if (nextBadgeId) {
+          const remaining = unowned.filter(id => id !== badgeToEarn);
+          setNextBadge(remaining.length > 0 ? pickRandom(remaining) : null);
+        }
+      }
     } else if (maxGoldenInLine === 1) {
       coins = newLines.length * 10;
       pts = newLines.length * (10 + wendigoPts);

@@ -152,7 +152,7 @@ export default function BossFightOverlay({ visible, bossId, purchases, hunterAct
 
           {!boss.noFlee && (
             <TouchableOpacity style={styles.fleeBtn} onPress={flee}>
-              <Text style={styles.fleeBtnText}>Flee (−{boss.fleePts} pts)</Text>
+              <Text style={styles.fleeBtnText}>Flee (−{boss.fleeCoins} coins)</Text>
             </TouchableOpacity>
           )}
         </View>

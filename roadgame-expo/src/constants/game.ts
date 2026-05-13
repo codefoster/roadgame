@@ -179,6 +179,7 @@ export const SHOP_ITEMS: ShopItem[] = [
   { id: 'golden_touch', name: 'Golden Touch',  description: '2 pre-marked golden bingo squares',             baseCost: 20 },
   { id: 'hunters_kit',  name: "Hunter's Kit",  description: 'Boss fights: raises win chance to 55–45%',      baseCost: 25 },
   { id: 'power_relic',  name: 'Power Relic',   description: 'Boss fights: raises win chance to 80–65%',      baseCost: 40 },
+  { id: 'cb_radio',     name: 'CB Radio',      description: 'Patrol warning, more hitchhikers, next badge preview', baseCost: 20 },
 ];
 
 // ─── Bosses ──────────────────────────────────────────────────────────────────
@@ -198,7 +199,7 @@ export interface BossDef {
   loseCoins: number;
   loseCredits: number;
   noFlee: boolean;
-  fleePts: number;
+  fleeCoins: number;
   bareHandsDouble: boolean; // win bare-handed gives 2× pts
 }
 
@@ -209,7 +210,7 @@ export const BOSSES: BossDef[] = [
     powerName: 'Pickpocket', powerDesc: 'Lose: also lose 5 coins',
     bareHandsChance: 0.40, kitChance: 0.65, relicChance: 0.88,
     winPts: 20, winCoins: 8, losePts: 8, loseCoins: 5, loseCredits: 0,
-    noFlee: false, fleePts: 5, bareHandsDouble: false,
+    noFlee: false, fleeCoins: 5, bareHandsDouble: false,
   },
   {
     id: 'swamp_witch', name: 'Swamp Witch',
@@ -217,15 +218,15 @@ export const BOSSES: BossDef[] = [
     powerName: 'Hex', powerDesc: 'Bare hands win chance greatly reduced',
     bareHandsChance: 0.18, kitChance: 0.52, relicChance: 0.80,
     winPts: 28, winCoins: 10, losePts: 15, loseCoins: 0, loseCredits: 0,
-    noFlee: false, fleePts: 5, bareHandsDouble: false,
+    noFlee: false, fleeCoins: 5, bareHandsDouble: false,
   },
   {
     id: 'forest_troll', name: 'Forest Troll',
     description: 'A massive troll blocks the road. It will chase you if you run!',
-    powerName: 'Stubborn', powerDesc: 'Fleeing costs 30 pts',
+    powerName: 'Stubborn', powerDesc: 'Fleeing costs 15 coins',
     bareHandsChance: 0.28, kitChance: 0.55, relicChance: 0.78,
     winPts: 35, winCoins: 12, losePts: 22, loseCoins: 0, loseCredits: 0,
-    noFlee: false, fleePts: 30, bareHandsDouble: false,
+    noFlee: false, fleeCoins: 15, bareHandsDouble: false,
   },
   {
     id: 'stone_gargoyle', name: 'Stone Gargoyle',
@@ -233,7 +234,7 @@ export const BOSSES: BossDef[] = [
     powerName: 'Armored', powerDesc: "Hunter's Kit has no effect",
     bareHandsChance: 0.25, kitChance: 0.25, relicChance: 0.72,
     winPts: 38, winCoins: 14, losePts: 25, loseCoins: 0, loseCredits: 0,
-    noFlee: false, fleePts: 5, bareHandsDouble: false,
+    noFlee: false, fleeCoins: 5, bareHandsDouble: false,
   },
   {
     id: 'sand_serpent', name: 'Sand Serpent',
@@ -241,7 +242,7 @@ export const BOSSES: BossDef[] = [
     powerName: 'Venomous', powerDesc: 'Lose: also lose 15 credits',
     bareHandsChance: 0.22, kitChance: 0.48, relicChance: 0.72,
     winPts: 45, winCoins: 16, losePts: 28, loseCoins: 0, loseCredits: 15,
-    noFlee: false, fleePts: 5, bareHandsDouble: false,
+    noFlee: false, fleeCoins: 5, bareHandsDouble: false,
   },
   {
     id: 'mountain_giant', name: 'Mountain Giant',
@@ -249,7 +250,7 @@ export const BOSSES: BossDef[] = [
     powerName: 'Brute Challenge', powerDesc: 'Win bare-handed: 2× pts',
     bareHandsChance: 0.18, kitChance: 0.45, relicChance: 0.70,
     winPts: 55, winCoins: 20, losePts: 35, loseCoins: 0, loseCredits: 0,
-    noFlee: false, fleePts: 5, bareHandsDouble: true,
+    noFlee: false, fleeCoins: 5, bareHandsDouble: true,
   },
   {
     id: 'frost_wraith', name: 'Frost Wraith',
@@ -257,7 +258,7 @@ export const BOSSES: BossDef[] = [
     powerName: 'Frozen', powerDesc: 'Cannot flee',
     bareHandsChance: 0.15, kitChance: 0.42, relicChance: 0.68,
     winPts: 60, winCoins: 22, losePts: 40, loseCoins: 0, loseCredits: 0,
-    noFlee: true, fleePts: 5, bareHandsDouble: false,
+    noFlee: true, fleeCoins: 0, bareHandsDouble: false,
   },
   {
     id: 'shadow_drake', name: 'Shadow Drake',
@@ -265,7 +266,7 @@ export const BOSSES: BossDef[] = [
     powerName: 'Shadow Veil', powerDesc: 'Power Relic is less effective',
     bareHandsChance: 0.12, kitChance: 0.40, relicChance: 0.55,
     winPts: 65, winCoins: 25, losePts: 45, loseCoins: 0, loseCredits: 0,
-    noFlee: false, fleePts: 5, bareHandsDouble: false,
+    noFlee: false, fleeCoins: 5, bareHandsDouble: false,
   },
   {
     id: 'void_wraith', name: 'Void Wraith',
@@ -273,7 +274,7 @@ export const BOSSES: BossDef[] = [
     powerName: 'Phase Shift', powerDesc: 'All win chances reduced by 10%',
     bareHandsChance: 0.08, kitChance: 0.32, relicChance: 0.58,
     winPts: 80, winCoins: 35, losePts: 55, loseCoins: 0, loseCredits: 0,
-    noFlee: false, fleePts: 5, bareHandsDouble: false,
+    noFlee: false, fleeCoins: 5, bareHandsDouble: false,
   },
   {
     id: 'ancient_titan', name: 'Ancient Titan',
@@ -281,6 +282,6 @@ export const BOSSES: BossDef[] = [
     powerName: 'Colossus', powerDesc: 'Cannot flee. Maximum risk and reward.',
     bareHandsChance: 0.05, kitChance: 0.28, relicChance: 0.52,
     winPts: 120, winCoins: 50, losePts: 80, loseCoins: 0, loseCredits: 0,
-    noFlee: true, fleePts: 5, bareHandsDouble: false,
+    noFlee: true, fleeCoins: 0, bareHandsDouble: false,
   },
 ];

@@ -81,6 +81,9 @@ export interface GameState {
   bossVisible: boolean;
   bossId: string | null;
 
+  // CB Radio
+  nextBadgeId: string | null;
+
   // Rival
   rivalScore: number;
   rivalFrozenTurns: number;
@@ -146,6 +149,7 @@ type GameActions = {
   setHitchhiker: (id: string | null, expiry?: number) => void;
   clearHitchhikerEffects: () => void;
   setBoss: (id: string | null) => void;
+  setNextBadge: (id: string | null) => void;
   setRivalScore: (n: number) => void;
   setRivalFrozenTurns: (n: number) => void;
   decrementRivalSkip: () => void;
@@ -201,6 +205,7 @@ export const useGameStore = create<GameState & GameActions>((set, get) => ({
   hGeologist: false, hBirdwatcher: false, hTrucker: false,
   hDJ: false, hWatchDouble: false, hHunter: false, hitchhikerExpiry: 0,
   bossVisible: false, bossId: null,
+  nextBadgeId: null,
   rivalScore: 0, rivalFrozenTurns: 0, rivalSkipCount: 0,
   patrolVisible: false,
   weather: 'sunny', region: 'forest', activeBadges: [],
@@ -247,6 +252,7 @@ export const useGameStore = create<GameState & GameActions>((set, get) => ({
       weather, region, activeBadges,
       spotCount: 0, dragonFlashesUsed: 0, lockedThresholds: [],
       aggressionLog: [], mpOpponentScore: 0,
+      nextBadgeId: null,
       headStart: purchases.includes('head_start'),
       creditBoost: purchases.includes('credit_boost'),
     });
@@ -342,6 +348,7 @@ export const useGameStore = create<GameState & GameActions>((set, get) => ({
     hTrucker: false, hDJ: false, hWatchDouble: false, hHunter: false,
   }),
   setBoss: (id) => set({ bossVisible: id !== null, bossId: id }),
+  setNextBadge: (id) => set({ nextBadgeId: id }),
 
   setRivalScore: (n) => set({ rivalScore: n }),
   setRivalFrozenTurns: (n) => set({ rivalFrozenTurns: n }),
