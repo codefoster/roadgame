@@ -79,12 +79,6 @@ export default function GameScreen() {
   useEffect(() => {
     store.initGame({ weather, region, activeBadges, purchases });
 
-    // Basilisk: freeze rival at game start
-    if (activeBadges.includes('basilisk')) {
-      const level = badgeLevel(persist.badgeLevels, 'basilisk');
-      store.setRivalFrozenTurns(20 + level * 5);
-    }
-
     // Phoenix: set coin floor for this game
     if (activeBadges.includes('phoenix')) {
       const level = badgeLevel(persist.badgeLevels, 'phoenix');
@@ -207,8 +201,8 @@ export default function GameScreen() {
     store.commitPendingB();
 
     // Salamander: bonus pts from pending credits
-    if (hasBadge(activeBadges, 'salamander')) {
-      const level = badgeLevel(persist.badgeLevels, 'salamander');
+    if (hasBadge(activeBadges, 'ifrit')) {
+      const level = badgeLevel(persist.badgeLevels, 'ifrit');
       const ratio = [0.10, 0.20, 0.30, 0.40][level] ?? 0.10;
       const bonus = Math.floor(pending * ratio);
       if (bonus > 0) store.addScoreA(bonus);
@@ -367,7 +361,7 @@ export default function GameScreen() {
     switch (chosen) {
       case 'steal': {
         if (store.powerups.length > 0) {
-          const coyoteLevel = hasBadge(activeBadges, 'coyote') ? badgeLevel(persist.badgeLevels, 'coyote') : -1;
+          const coyoteLevel = hasBadge(activeBadges, 'kitsune') ? badgeLevel(persist.badgeLevels, 'kitsune') : -1;
           const blockChance = coyoteLevel >= 0 ? ([0.25, 0.40, 0.55, 0.70][coyoteLevel] ?? 0.25) : 0;
           if (Math.random() < blockChance) {
             doFlash('Steal blocked! (Coyote)', '#aa44ff');
@@ -540,7 +534,10 @@ export default function GameScreen() {
     if (pressesLastSecond < 4) return;
     const gs = useGameStore.getState();
     const speedTrapActive = gs.roadEventId === 'speed_trap' && Date.now() < gs.roadEventExpiry;
-    const aggression = Math.min(1, (pressesLastSecond / 4) * (speedTrapActive ? 2 : 1));
+    const shuckReduction = hasBadge(activeBadges, 'shuck')
+      ? ([0.20, 0.30, 0.40, 0.55][badgeLevel(persist.badgeLevels, 'shuck')] ?? 0.20)
+      : 0;
+    const aggression = Math.min(1, (pressesLastSecond / 4) * (speedTrapActive ? 2 : 1)) * (1 - shuckReduction);
     if (checkPatrol(region, aggression)) {
       if (purchases.includes('cb_radio')) {
         store.setFlash('📻 Breaker — smokey ahead!', '#ffaa00');
