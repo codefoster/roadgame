@@ -260,7 +260,7 @@ export default function GameScreen() {
   function pressA() {
     if (store.patrolVisible) return;
     if (store.bossVisible) return;
-    if (store.mpZapped) return;
+    if (useGameStore.getState().mpZapped) return;
     if (store.scoreB < 1 && !store.infiniteCredits) return;
 
     store.logAggression();
@@ -351,7 +351,14 @@ export default function GameScreen() {
     for (const t of thresholds) {
       if (newScore >= t && !store.lockedThresholds.includes(t)) {
         store.addLockedThreshold(t);
-        doFlash('Level Up!', '#ffff00');
+        doFlash('Level Up! Watch slows…', '#ffff00');
+        // Restart watch interval at new (slower) rate if currently watching
+        if (bTimerRef.current) {
+          clearInterval(bTimerRef.current);
+          const newInterval = bInterval(newScore, hasBadge(activeBadges, 'centaur'), badgeLevel(persist.badgeLevels, 'centaur'));
+          const actual = useGameStore.getState().hWatchDouble ? newInterval / 2 : newInterval;
+          bTimerRef.current = setInterval(onBTick, actual);
+        }
       }
     }
   }
@@ -834,9 +841,9 @@ export default function GameScreen() {
       <View style={styles.mainButtons}>
         {/* A */}
         <TouchableOpacity
-          style={[styles.gameBtn, styles.aBtn, (scoreB < 1 && !infiniteCredits) && styles.btnDisabled]}
+          style={[styles.gameBtn, styles.aBtn, (scoreB < 1 && !infiniteCredits || store.mpZapped) && styles.btnDisabled]}
           onPress={pressA}
-          disabled={scoreB < 1 && !infiniteCredits}
+          disabled={scoreB < 1 && !infiniteCredits || store.mpZapped}
         >
           <Text style={styles.gameBtnLabel}>Spot</Text>
           <Text style={styles.gameBtnSub}>−1 credit</Text>
