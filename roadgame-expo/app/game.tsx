@@ -170,10 +170,8 @@ export default function GameScreen() {
 
     const tier = watchTier(pending);
     if (tier > 0) {
-      const hasShinx = hasBadge(activeBadges, 'sphinx');
-      const effectiveTier = hasShinx ? Math.min(3, tier + 1) as 1|2|3 : tier as 1|2|3;
       const code = generatePowerup(
-        effectiveTier, region,
+        tier as 1|2|3, region,
         store.luckyRoll, store.powerSurge
       );
       store.addPowerup(code);
@@ -181,7 +179,7 @@ export default function GameScreen() {
       if (store.powerSurge) store.setEffect({ powerSurge: false });
 
       // Challenge: earn l2+
-      if (store.flashChallenge?.type === 'earn_l2' && effectiveTier >= 2) {
+      if (store.flashChallenge?.type === 'earn_l2' && tier >= 2) {
         store.updateChallengeProgress(1);
       }
     }
@@ -605,6 +603,13 @@ export default function GameScreen() {
     store.removePowerup(code);
     const tier = parseInt(code[0]) as 1 | 2 | 3;
     const sub = code[1];
+
+    // Sphinx: bonus pts for activating any powerup
+    if (hasBadge(activeBadges, 'sphinx')) {
+      const level = badgeLevel(persist.badgeLevels, 'sphinx');
+      const bonus = [5, 8, 12, 15][level] ?? 5;
+      store.addScoreA(bonus);
+    }
 
     switch (code) {
       case '1a':

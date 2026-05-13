@@ -59,7 +59,7 @@ export function cPenalty(score: number, hasSelkie: boolean, selkieLevel: number)
   else base = 20;
 
   if (hasSelkie) {
-    const reductionFactor = [0.5, 0.67, 0.75, 0.99][selkieLevel] ?? 0.5;
+    const reductionFactor = [0.10, 0.20, 0.35, 0.50][selkieLevel] ?? 0.10;
     base = Math.round(base * (1 - reductionFactor));
   }
   return base;
