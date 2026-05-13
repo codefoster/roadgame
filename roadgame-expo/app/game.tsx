@@ -6,7 +6,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 
 import { Region, Weather, TOURISTS, HITCHHIKERS, BOSSES, BADGES, ROAD_EVENTS } from '../src/constants/game';
 import {
-  bInterval, cPenalty, decayRate, decayThreshold,
+  bInterval, decayRate, decayThreshold,
   flashInterval, generatePowerup, spotPoints, watchTier,
   rivalAction, checkPatrol, randInt, pickRandom,
 } from '../src/lib/gameLogic';
@@ -65,7 +65,6 @@ export default function GameScreen() {
   const doubleRef       = useRef<ReturnType<typeof setTimeout>  | null>(null);
   const grassRef        = useRef<ReturnType<typeof setTimeout>  | null>(null);
   const patrolBlockRef  = useRef<ReturnType<typeof setTimeout>  | null>(null);
-  const switchFlashRef  = useRef<ReturnType<typeof setTimeout>  | null>(null);
   const roadEventTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const coinAccRef      = useRef(0); // accumulated points toward next coin
   const patrolPausedWatch = useRef(false);
@@ -111,7 +110,7 @@ export default function GameScreen() {
 
   function clearAllTimers() {
     [bTimerRef, decayTimerRef, rivalTimerRef, mpSyncRef].forEach(r => r.current && clearInterval(r.current));
-    [flashTimerRef, touristTimerRef, patrolTimerRef, infiniteRef, doubleRef, grassRef, patrolBlockRef, switchFlashRef, roadEventTimerRef]
+    [flashTimerRef, touristTimerRef, patrolTimerRef, infiniteRef, doubleRef, grassRef, patrolBlockRef, roadEventTimerRef]
       .forEach(r => r.current && clearTimeout(r.current));
     relayRef.current?.stop();
   }
@@ -290,46 +289,6 @@ export default function GameScreen() {
     }
   }
 
-  // ── C: switch ────────────────────────────────────────────────────────────────
-
-  function pressC() {
-    if (store.patrolVisible) return;
-    store.logAggression();
-
-    if (store.bWatching && bTimerRef.current) {
-      commitWatch();
-      clearInterval(bTimerRef.current);
-      bTimerRef.current = setInterval(onBTick, 1000);
-    }
-    if (store.nextACKeepB) store.setEffect({ nextACKeepB: false });
-
-    // Switch flash: free if pressed in time
-    if (store.switchFlashActive) {
-      store.setSwitchFlash(false);
-      if (switchFlashRef.current) clearTimeout(switchFlashRef.current);
-      store.addScoreA(5);
-      return;
-    }
-
-    const penalty = cPenalty(
-      store.scoreA,
-      hasBadge(activeBadges, 'selkie'),
-      badgeLevel(persist.badgeLevels, 'selkie')
-    );
-    store.addScoreA(-penalty);
-
-    // Challenge: switch2
-    if (store.flashChallenge?.type === 'switch2') {
-      store.updateChallengeProgress(1);
-      if (store.flashChallenge.progress + 1 >= store.flashChallenge.target) {
-        store.addScoreA(20);
-        store.clearFlash();
-      }
-    }
-
-    checkPatrolTrigger();
-  }
-
   // ── Coins from scoring ────────────────────────────────────────────────────────
 
   function checkCoinsFromScore(pts: number) {
@@ -383,10 +342,10 @@ export default function GameScreen() {
       }
     }
 
-    const flashTypes = ['switch', 'steal', 'challenge_spot', 'challenge_watch', 'challenge_l2', 'challenge_switch'];
+    const flashTypes = ['steal', 'challenge_spot', 'challenge_watch', 'challenge_l2'];
     const weights = score >= 800
-      ? [3, 4, 2, 2, 2, 2]
-      : [3, 2, 2, 2, 2, 2];
+      ? [4, 2, 2, 2]
+      : [2, 2, 2, 2];
 
     // weighted pick
     const total = weights.reduce((a, b) => a + b, 0);
@@ -398,18 +357,6 @@ export default function GameScreen() {
     }
 
     switch (chosen) {
-      case 'switch': {
-        const deadline = Date.now() + 3000;
-        store.setSwitchFlash(true, deadline);
-        doFlash('Switch!', '#ff4444');
-        switchFlashRef.current = setTimeout(() => {
-          if (store.switchFlashActive) {
-            store.setSwitchFlash(false);
-            store.addScoreA(-cPenalty(score, false, 0));
-          }
-        }, 3000);
-        break;
-      }
       case 'steal': {
         if (store.powerups.length > 0) {
           store.removePowerup(store.powerups[0]);
@@ -445,15 +392,6 @@ export default function GameScreen() {
         doFlash('Challenge: Earn L2+ power-up!', '#88ff44');
         store.setFlashChallenge({ type: 'earn_l2', target: 1, progress: 0, deadline: Date.now() + durationL });
         setTimeout(() => { if (store.flashChallenge?.type === 'earn_l2') store.clearFlash(); }, durationL);
-        break;
-      }
-      case 'challenge_switch': {
-        const manticoreS = hasBadge(activeBadges, 'manticore');
-        const multS = manticoreS ? ([1.3, 1.5, 1.7, 2.0][badgeLevel(persist.badgeLevels, 'manticore')] ?? 1.3) : 1;
-        const durationS = Math.round(30000 * multS);
-        doFlash('Challenge: Switch 2× in 30s!', '#ff44aa');
-        store.setFlashChallenge({ type: 'switch2', target: 2, progress: 0, deadline: Date.now() + durationS });
-        setTimeout(() => { if (store.flashChallenge?.type === 'switch2') store.clearFlash(); }, durationS);
         break;
       }
     }
@@ -784,9 +722,6 @@ export default function GameScreen() {
         {hGeologist    && <Text style={styles.effectChip}>Geologist +1</Text>}
         {hTrucker      && <Text style={styles.effectChip}>Trucker No Decay</Text>}
         {hDJ           && <Text style={styles.effectChip}>DJ 2×</Text>}
-        {store.switchFlashActive && (
-          <Text style={[styles.effectChip, { backgroundColor: '#660000' }]}>Switch now!</Text>
-        )}
         {flashChallenge && (
           <Text style={[styles.effectChip, { backgroundColor: '#333300' }]}>
             {flashChallenge.type}: {flashChallenge.progress}/{flashChallenge.target}
@@ -826,17 +761,6 @@ export default function GameScreen() {
         >
           <Text style={styles.gameBtnLabel}>Spot</Text>
           <Text style={styles.gameBtnSub}>−1 credit</Text>
-        </TouchableOpacity>
-
-        {/* C */}
-        <TouchableOpacity
-          style={[styles.gameBtn, styles.cBtn]}
-          onPress={pressC}
-        >
-          <Text style={styles.gameBtnLabel}>Switch</Text>
-          <Text style={styles.gameBtnSub}>
-            {`−${cPenalty(scoreA, hasBadge(effectiveBadges, 'selkie'), badgeLevel(persist.badgeLevels, 'selkie'))}`}
-          </Text>
         </TouchableOpacity>
 
         {/* B */}
@@ -989,7 +913,6 @@ const styles = StyleSheet.create({
   aBtn:      { backgroundColor: '#1a3a1a' },
   bBtn:      { backgroundColor: '#1a1a4a' },
   bBtnActive:{ backgroundColor: '#3a3a8a' },
-  cBtn:      { backgroundColor: '#3a1a00' },
   btnDisabled: { opacity: 0.35 },
   gameBtnLabel: { color: '#fff', fontSize: 20, fontWeight: 'bold' },
   gameBtnSub:   { color: '#aaa', fontSize: 12, marginTop: 4 },

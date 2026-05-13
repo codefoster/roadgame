@@ -51,19 +51,7 @@ export function bInterval(score: number, hasCentaur: boolean, centaurLevel: numb
   return base;
 }
 
-export function cPenalty(score: number, hasSelkie: boolean, selkieLevel: number): number {
-  let base: number;
-  if (score >= 1000) base = 50;
-  else if (score >= 800) base = 40;
-  else if (score >= 500) base = 30;
-  else base = 20;
 
-  if (hasSelkie) {
-    const reductionFactor = [0.10, 0.20, 0.35, 0.50][selkieLevel] ?? 0.10;
-    base = Math.round(base * (1 - reductionFactor));
-  }
-  return base;
-}
 
 export function flashInterval(score: number, weather: Weather): [number, number] {
   // Returns [minMs, maxMs]

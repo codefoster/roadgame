@@ -63,7 +63,7 @@ export const POWERUPS: PowerupDef[] = [
   { code: '1b', name: 'Double Points (5s)',      description: '2× pts on every Spot for 5s',                tier: 1 },
   { code: '1c', name: 'Lucky Roll',              description: 'Next power-up earned is best variant',       tier: 1 },
   { code: '1d', name: 'Energy Drink',             description: 'Instantly adds +25 credits',                  tier: 1 },
-  { code: '1e', name: 'Hold Boost',              description: "Next A/C press won't reset Watch timer",     tier: 1 },
+  { code: '1e', name: 'Hold Boost',              description: "Next Spot press won't reset Watch timer",    tier: 1 },
   { code: '2a', name: 'Infinite Credits (10s)',  description: 'Floods credits for 10s, then resets',        tier: 2 },
   { code: '2b', name: 'Double Points (10s)',     description: '2× pts on every Spot for 10s',               tier: 2 },
   { code: '2c', name: 'Jackpot Hold',            description: 'Next hold converts looks to 2× points',      tier: 2 },

@@ -3,7 +3,7 @@ import { Region, Weather, BINGO_STANDARD, BINGO_REGIONS } from '../constants/gam
 import { pickRandom, randInt } from '../lib/gameLogic';
 
 export interface FlashChallenge {
-  type: 'spot3' | 'watch_credits' | 'earn_l2' | 'switch2';
+  type: 'spot3' | 'watch_credits' | 'earn_l2';
   target: number;
   progress: number;
   deadline: number; // Date.now() + duration ms
@@ -43,9 +43,6 @@ export interface GameState {
   flashText: string;
   flashColor: string;
   flashChallenge: FlashChallenge | null;
-  switchFlashActive: boolean;
-  switchFlashDeadline: number;
-
   // Bingo
   bingoCard: string[];
   bingoMarked: boolean[];
@@ -139,7 +136,6 @@ type GameActions = {
   clearFlash: () => void;
   setFlashChallenge: (c: FlashChallenge | null) => void;
   updateChallengeProgress: (delta: number) => void;
-  setSwitchFlash: (active: boolean, deadline?: number) => void;
   markBingo: (idx: number) => void;
   resetBingo: () => void;
   setAlphaFound: (idx: number) => void;
@@ -196,7 +192,6 @@ export const useGameStore = create<GameState & GameActions>((set, get) => ({
   infiniteCredits: false, infiniteExpiry: 0,
   flashVisible: false, flashText: '', flashColor: '#fff',
   flashChallenge: null,
-  switchFlashActive: false, switchFlashDeadline: 0,
   bingoCard: [], bingoMarked: new Array(9).fill(false),
   goldenTiles: [], bingoDone: false,
   alphaFound: new Array(26).fill(false), alphaVisible: false,
@@ -240,7 +235,6 @@ export const useGameStore = create<GameState & GameActions>((set, get) => ({
       infiniteCredits: false, infiniteExpiry: 0,
       flashVisible: false, flashText: '', flashColor: '#fff',
       flashChallenge: null,
-      switchFlashActive: false, switchFlashDeadline: 0,
       bingoCard, bingoMarked,
       goldenTiles, bingoDone: false,
       alphaFound: new Array(26).fill(false), alphaVisible: false,
@@ -304,8 +298,6 @@ export const useGameStore = create<GameState & GameActions>((set, get) => ({
     if (!s.flashChallenge) return {};
     return { flashChallenge: { ...s.flashChallenge, progress: s.flashChallenge.progress + delta } };
   }),
-  setSwitchFlash: (active, deadline = 0) => set({ switchFlashActive: active, switchFlashDeadline: deadline }),
-
   markBingo: (idx) => set((s) => {
     const marked = [...s.bingoMarked];
     marked[idx] = true;
