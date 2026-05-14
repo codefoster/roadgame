@@ -709,11 +709,14 @@ export default function GameScreen() {
     checkPatrolTrigger();
     checkDifficulty(store.scoreA + points);
 
-    // 1/150 chance of boss encounter
-    if (Math.random() < 1 / 150) {
+    // Boss encounter (rematch bosses spawn at 2× rate)
+    const rematchId = useGameStore.getState().rematchBossId;
+    const bossSpawnChance = rematchId ? 1 / 75 : 1 / 150;
+    if (Math.random() < bossSpawnChance) {
       let boss;
-      if (hasBadge(activeBadges, 'valkyrie')) {
-        // Pick 3 candidates, take the hardest (highest flee cost)
+      if (rematchId) {
+        boss = BOSSES.find(b => b.id === rematchId) ?? pickRandom(BOSSES);
+      } else if (hasBadge(activeBadges, 'valkyrie')) {
         const picks = [pickRandom(BOSSES), pickRandom(BOSSES), pickRandom(BOSSES)];
         boss = picks.reduce((a, b) => (b.fleeCoins > a.fleeCoins ? b : a));
       } else {
@@ -1380,38 +1383,52 @@ export default function GameScreen() {
 
   // ── Bingo callbacks ──────────────────────────────────────────────────────────
 
+  function bossScaleMultiplier(score: number): number {
+    if (score >= 1000) return 2.0;
+    if (score >= 800)  return 1.75;
+    if (score >= 500)  return 1.5;
+    if (score >= 200)  return 1.25;
+    return 1.0;
+  }
+
   function onBossResult(fled: boolean, won: boolean, winPts: number, winCoins: number, curse: string | null) {
     const boss = BOSSES.find(b => b.id === store.bossId);
+    const scale = bossScaleMultiplier(store.scoreA);
     store.setBoss(null);
     if (fled) {
-      persist.spendCoins(boss?.fleeCoins ?? 5);
-    } else if (won) {
-      store.addScoreA(winPts);
-      persist.addCoins(winCoins);
-      doFlash(`Defeated ${boss?.name ?? 'Boss'}!`, '#ffd700');
-      // Valkyrie trial: win 3 boss fights with Valkyrie active
-      if (hasBadge(activeBadges, 'valkyrie')) {
-        const prevV = useGameStore.getState().trialProgress['valkyrie'] ?? 0;
-        store.updateTrialProgress('valkyrie', 1);
-        if (!persist.completedTrials.includes('valkyrie') && prevV + 1 >= (BADGE_TRIALS['valkyrie']?.target ?? 5)) {
-          persist.completeTrial('valkyrie');
-          doFlash('Valkyrie Trial complete!', '#ffaaff');
-        }
-        // Trial done: +10 pts per boss win
-        if (persist.completedTrials.includes('valkyrie')) store.addScoreA(10);
-      }
-      // Valkyrie prestige: +5 pts on every boss win
-      if (persist.prestigedBadges.includes('valkyrie')) store.addScoreA(5);
-      checkBadgeChallengeProgress('boss_win', 1);
+      persist.spendCoins(Math.round((boss?.fleeCoins ?? 5) * scale));
+      store.setRematchBossId(boss?.id ?? null);
+      doFlash(`${boss?.name ?? 'Boss'} will find you again...`, '#ff8800');
     } else {
-      store.addScoreA(-(boss?.losePts ?? 10));
-      if ((boss?.loseCoins ?? 0) > 0) persist.spendCoins(boss!.loseCoins);
-      if ((boss?.loseCredits ?? 0) > 0) store.addScoreB(-boss!.loseCredits);
-      if (curse) {
-        store.addCurse(curse);
-        if (curse === 'cursed_powerups') store.setCursedPowerupsLeft(3);
+      store.setRematchBossId(null);
+      if (won) {
+        store.addScoreA(winPts);
+        persist.addCoins(winCoins);
+        doFlash(`Defeated ${boss?.name ?? 'Boss'}!`, '#ffd700');
+        // Valkyrie trial: win 5 boss fights with Valkyrie active
+        if (hasBadge(activeBadges, 'valkyrie')) {
+          const prevV = useGameStore.getState().trialProgress['valkyrie'] ?? 0;
+          store.updateTrialProgress('valkyrie', 1);
+          if (!persist.completedTrials.includes('valkyrie') && prevV + 1 >= (BADGE_TRIALS['valkyrie']?.target ?? 5)) {
+            persist.completeTrial('valkyrie');
+            doFlash('Valkyrie Trial complete!', '#ffaaff');
+          }
+          // Trial done: +10 pts per boss win
+          if (persist.completedTrials.includes('valkyrie')) store.addScoreA(10);
+        }
+        // Valkyrie prestige: +5 pts on every boss win
+        if (persist.prestigedBadges.includes('valkyrie')) store.addScoreA(5);
+        checkBadgeChallengeProgress('boss_win', 1);
+      } else {
+        store.addScoreA(-Math.round((boss?.losePts ?? 10) * scale));
+        if ((boss?.loseCoins ?? 0) > 0) persist.spendCoins(Math.round(boss!.loseCoins * scale));
+        if ((boss?.loseCredits ?? 0) > 0) store.addScoreB(-Math.round(boss!.loseCredits * scale));
+        if (curse) {
+          store.addCurse(curse);
+          if (curse === 'cursed_powerups') store.setCursedPowerupsLeft(3);
+        }
+        doFlash(`${boss?.name ?? 'Boss'} wins...`, '#ff3333');
       }
-      doFlash(`${boss?.name ?? 'Boss'} wins...`, '#ff3333');
     }
   }
 
@@ -1489,7 +1506,7 @@ export default function GameScreen() {
     doublePoints, grassVisible, grassOn, infiniteCredits,
     patrolVisible, rivalScore, activeBadges: storeActiveBadges,
     flashChallenge, hGeologist, hTrucker, hDJ,
-    bossVisible, bossId, hHunter, nextBadgeId } = store;
+    bossVisible, bossId, hHunter, nextBadgeId, rematchBossId } = store;
 
   const effectiveBadges = activeBadges;
 
@@ -1567,6 +1584,11 @@ export default function GameScreen() {
           <Text style={styles.scoreValue}>{rivalScore}</Text>
         </View>
       </View>
+      {rematchBossId && (
+        <Text style={styles.rematchWarning}>
+          ⚔️ {BOSSES.find(b => b.id === rematchBossId)?.name ?? 'Boss'} is hunting you!
+        </Text>
+      )}
 
       {/* Active effects bar */}
       <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.effectsRow}>
@@ -1772,6 +1794,8 @@ export default function GameScreen() {
         coins={persist.coins}
         topPowerup={store.powerups[0] ?? null}
         scoreB={scoreB}
+        scoreA={scoreA}
+        isRematch={!!rematchBossId}
         onResult={onBossResult}
         onDeal={onBossDealt}
       />
@@ -1859,6 +1883,7 @@ const styles = StyleSheet.create({
   scoreBox: { flex: 1, alignItems: 'center', padding: 8, backgroundColor: '#111', marginHorizontal: 2, borderRadius: 6 },
   scoreLabel: { color: '#666', fontSize: 10 },
   scoreValue: { color: '#fff', fontSize: 20, fontWeight: 'bold' },
+  rematchWarning: { color: '#ff8800', fontSize: 12, textAlign: 'center', marginBottom: 4 },
 
   effectsRow: { paddingHorizontal: 8, marginBottom: 6 },
   effectChip: {

@@ -13,19 +13,31 @@ interface Props {
   coins: number;
   topPowerup: string | null;
   scoreB: number;
+  scoreA: number;
+  isRematch: boolean;
   onResult: (fled: boolean, won: boolean, winPts: number, winCoins: number, curse: string | null) => void;
   onDeal: () => void;
 }
 
+function bossScaleMultiplier(score: number): number {
+  if (score >= 1000) return 2.0;
+  if (score >= 800)  return 1.75;
+  if (score >= 500)  return 1.5;
+  if (score >= 200)  return 1.25;
+  return 1.0;
+}
+
 export default function BossFightOverlay({
   visible, bossId, purchases, hunterActive, valkyrieBonus,
-  activeBadges, currentRelics, coins, topPowerup, scoreB,
+  activeBadges, currentRelics, coins, topPowerup, scoreB, scoreA, isRematch,
   onResult, onDeal,
 }: Props) {
   const [result, setResult] = useState<{ won: boolean; winPts: number; winCoins: number } | null>(null);
 
   const boss = BOSSES.find(b => b.id === bossId);
   if (!boss) return null;
+
+  const scale = bossScaleMultiplier(scoreA);
 
   // Weakness
   const hasWeakness = boss.weakness.type === 'badge'
@@ -43,6 +55,13 @@ export default function BossFightOverlay({
   const kitDelta = boss.kitChance - boss.bareHandsChance;
   const bothChance = Math.min(0.95, relicChance + kitDelta);
 
+  const scaledWinPts   = Math.round(boss.winPts * scale);
+  const scaledWinCoins = Math.round(boss.winCoins * scale);
+  const scaledLosePts  = Math.round(boss.losePts * scale);
+  const scaledLoseCoins = Math.round(boss.loseCoins * scale);
+  const scaledLoseCredits = Math.round(boss.loseCredits * scale);
+  const scaledFleeCost = Math.round((boss.fleeCoins ?? 5) * scale);
+
   // Deal affordability
   const deal = boss.deal;
   const canAffordDeal = deal
@@ -53,10 +72,9 @@ export default function BossFightOverlay({
 
   function fight(chance: number, isBarehands: boolean) {
     const won = Math.random() < chance;
-    const pts = won
-      ? (isBarehands && boss!.bareHandsDouble ? boss!.winPts * 2 : boss!.winPts)
-      : 0;
-    setResult({ won, winPts: pts, winCoins: won ? boss!.winCoins : 0 });
+    const rawPts = won ? (isBarehands && boss!.bareHandsDouble ? boss!.winPts * 2 : boss!.winPts) : 0;
+    const pts = Math.round(rawPts * scale);
+    setResult({ won, winPts: pts, winCoins: won ? scaledWinCoins : 0 });
   }
 
   function dismiss() {
@@ -85,15 +103,15 @@ export default function BossFightOverlay({
               <>
                 <Text style={styles.rewardLine}>+{result.winPts} pts</Text>
                 <Text style={styles.rewardLine}>+{result.winCoins} coins</Text>
-                {boss.bareHandsDouble && result.winPts > boss.winPts && (
+                {boss.bareHandsDouble && result.winPts > scaledWinPts && (
                   <Text style={styles.bonusLine}>⚡ Bare-handed glory bonus!</Text>
                 )}
               </>
             ) : (
               <>
-                <Text style={styles.penaltyLine}>−{boss.losePts} pts</Text>
-                {boss.loseCoins > 0 && <Text style={styles.penaltyLine}>−{boss.loseCoins} coins</Text>}
-                {boss.loseCredits > 0 && <Text style={styles.penaltyLine}>−{boss.loseCredits} credits</Text>}
+                <Text style={styles.penaltyLine}>−{scaledLosePts} pts</Text>
+                {scaledLoseCoins > 0 && <Text style={styles.penaltyLine}>−{scaledLoseCoins} coins</Text>}
+                {scaledLoseCredits > 0 && <Text style={styles.penaltyLine}>−{scaledLoseCredits} credits</Text>}
                 {curse && (
                   <View style={styles.curseResult}>
                     <Text style={styles.curseResultTitle}>☠️ Cursed!</Text>
@@ -115,7 +133,8 @@ export default function BossFightOverlay({
     <Modal visible={visible} transparent animationType="slide">
       <View style={styles.backdrop}>
         <ScrollView contentContainerStyle={styles.card}>
-          <Text style={styles.title}>⚔️ BOSS ENCOUNTER</Text>
+          <Text style={styles.title}>⚔️ {isRematch ? 'REMATCH!' : 'BOSS ENCOUNTER'}</Text>
+          {isRematch && <Text style={styles.rematchLine}>This boss is hunting you — spawn rate was doubled!</Text>}
           <Text style={styles.bossName}>{boss.name}</Text>
           <Text style={styles.bossDesc}>{boss.description}</Text>
 
@@ -148,16 +167,20 @@ export default function BossFightOverlay({
             </View>
           )}
 
+          {scale > 1 && (
+            <Text style={styles.scaleLine}>⚡ Score-scaled ×{scale.toFixed(2)} — higher risk &amp; reward</Text>
+          )}
           <View style={styles.rewardRow}>
             <Text style={styles.rewardLine}>
-              Win: +{boss.winPts} pts · +{boss.winCoins} coins
+              Win: +{scaledWinPts} pts · +{scaledWinCoins} coins
               {boss.bareHandsDouble ? ' (2× bare-handed)' : ''}
             </Text>
             <Text style={styles.penaltyLine}>
-              Lose: −{boss.losePts} pts
-              {boss.loseCoins > 0 ? ` · −${boss.loseCoins} coins` : ''}
-              {boss.loseCredits > 0 ? ` · −${boss.loseCredits} credits` : ''}
+              Lose: −{scaledLosePts} pts
+              {scaledLoseCoins > 0 ? ` · −${scaledLoseCoins} coins` : ''}
+              {scaledLoseCredits > 0 ? ` · −${scaledLoseCredits} credits` : ''}
             </Text>
+            {!boss.noFlee && <Text style={styles.fleeLine}>Flee: −{scaledFleeCost} coins</Text>}
           </View>
 
           <TouchableOpacity style={styles.bareBtn} onPress={() => fight(bareChance, true)}>
@@ -249,7 +272,10 @@ const styles = StyleSheet.create({
   rewardRow: { alignItems: 'center', marginBottom: 12 },
   rewardLine: { color: '#ffd700', fontSize: 12, marginBottom: 2 },
   penaltyLine: { color: '#ff7777', fontSize: 12 },
+  fleeLine: { color: '#ffaa44', fontSize: 11, marginTop: 2 },
   bonusLine: { color: '#ffdd44', fontSize: 12, marginTop: 4 },
+  scaleLine: { color: '#ff8800', fontSize: 11, textAlign: 'center', marginBottom: 6 },
+  rematchLine: { color: '#ff8800', fontSize: 11, textAlign: 'center', marginBottom: 4 },
   winTitle: { color: '#ffd700', fontSize: 24, fontWeight: 'bold', textAlign: 'center', marginBottom: 8 },
   loseTitle: { color: '#ff3333', fontSize: 24, fontWeight: 'bold', textAlign: 'center', marginBottom: 8 },
   curseResult: { marginTop: 10, backgroundColor: '#2a0000', borderRadius: 8, padding: 10, alignItems: 'center', borderWidth: 1, borderColor: '#8b0000' },

@@ -84,6 +84,7 @@ export interface GameState {
   // Boss
   bossVisible: boolean;
   bossId: string | null;
+  rematchBossId: string | null;
 
   // CB Radio
   nextBadgeId: string | null;
@@ -193,6 +194,7 @@ type GameActions = {
   clearHitchhikerEffects: () => void;
   setBoss: (id: string | null) => void;
   setNextBadge: (id: string | null) => void;
+  setRematchBossId: (id: string | null) => void;
   setRivalScore: (n: number) => void;
   setRivalFrozenTurns: (n: number) => void;
   decrementRivalSkip: () => void;
@@ -271,7 +273,7 @@ export const useGameStore = create<GameState & GameActions>((set, get) => ({
   hitchhikerVisible: false, hitchhikerId: null,
   hGeologist: false, hBirdwatcher: false, hTrucker: false,
   hDJ: false, hWatchDouble: false, hHunter: false, hitchhikerExpiry: 0,
-  bossVisible: false, bossId: null,
+  bossVisible: false, bossId: null, rematchBossId: null,
   nextBadgeId: null,
   rivalScore: 0, rivalFrozenTurns: 0, rivalSkipCount: 0,
   patrolVisible: false,
@@ -338,6 +340,7 @@ export const useGameStore = create<GameState & GameActions>((set, get) => ({
       badgeChallenge: null,
       relicActUsed: [], relicFreeSpots: 0, relicRouteBonusSpots: 0, relicRabbitBonusSpots: 0,
       relicForceL3: false, relicNavFirst: true, relicWatchBoostExpiry: 0,
+      rematchBossId: null,
     });
   },
 
@@ -456,6 +459,7 @@ export const useGameStore = create<GameState & GameActions>((set, get) => ({
   }),
   setBoss: (id) => set({ bossVisible: id !== null, bossId: id }),
   setNextBadge: (id) => set({ nextBadgeId: id }),
+  setRematchBossId: (id) => set({ rematchBossId: id }),
 
   setRivalScore: (n) => set({ rivalScore: n }),
   setRivalFrozenTurns: (n) => set({ rivalFrozenTurns: n }),
