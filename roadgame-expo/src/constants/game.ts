@@ -175,6 +175,20 @@ export interface ShopItem {
   baseCost: number;
 }
 
+export interface BundleDef {
+  id: string;
+  name: string;
+  itemIds: [string, string];
+  cost: number;
+  tagline: string;
+}
+
+export const SHOP_BUNDLES: BundleDef[] = [
+  { id: 'scout_kit',   name: 'Scout Kit',   itemIds: ['spare_tire', 'credit_boost'], cost: 16, tagline: 'Stay fueled, stay rolling'         },
+  { id: 'road_boss',   name: 'Road Boss',   itemIds: ['hunters_kit', 'rival_chill'], cost: 30, tagline: 'Dominate bosses and rivals'         },
+  { id: 'broadcaster', name: 'Broadcaster', itemIds: ['cb_radio', 'rival_decoy'],    cost: 30, tagline: 'Command the airwaves and the road'  },
+];
+
 export const SHOP_ITEMS: ShopItem[] = [
   { id: 'head_start',   name: 'Head Start',    description: '+50 pts at game start',                         baseCost: 5  },
   { id: 'credit_boost', name: 'Credit Boost',  description: '+25 credits at game start',                     baseCost: 10 },
@@ -188,6 +202,13 @@ export const SHOP_ITEMS: ShopItem[] = [
 ];
 
 // ─── Bosses ──────────────────────────────────────────────────────────────────
+
+export interface BossDeal {
+  label: string;
+  type: 'powerup' | 'coins' | 'credits';
+  cost: number;
+  pts: number; // bonus pts awarded on deal
+}
 
 export interface BossDef {
   id: string;
@@ -205,7 +226,10 @@ export interface BossDef {
   loseCredits: number;
   noFlee: boolean;
   fleeCoins: number;
-  bareHandsDouble: boolean; // win bare-handed gives 2× pts
+  bareHandsDouble: boolean;
+  weakness: { type: 'badge' | 'relic'; id: string; name: string; };
+  curse: { id: string; desc: string; } | null;
+  deal: BossDeal | null;
 }
 
 export const BOSSES: BossDef[] = [
@@ -213,82 +237,188 @@ export const BOSSES: BossDef[] = [
     id: 'road_goblin', name: 'Road Goblin',
     description: "A sneaky goblin darts across your path, eyeing your coins!",
     powerName: 'Pickpocket', powerDesc: 'Lose: also lose 5 coins',
-    bareHandsChance: 0.40, kitChance: 0.65, relicChance: 0.88,
+    bareHandsChance: 0.20, kitChance: 0.65, relicChance: 0.88,
     winPts: 20, winCoins: 8, losePts: 8, loseCoins: 5, loseCredits: 0,
     noFlee: false, fleeCoins: 5, bareHandsDouble: false,
+    weakness: { type: 'badge', id: 'kitsune', name: 'Kitsune' },
+    curse: null,
+    deal: { label: 'Sacrifice a power-up', type: 'powerup', cost: 0, pts: 0 },
   },
   {
     id: 'swamp_witch', name: 'Swamp Witch',
     description: 'A cackling witch casts a hex, clouding your fighting instincts!',
     powerName: 'Hex', powerDesc: 'Bare hands win chance greatly reduced',
-    bareHandsChance: 0.18, kitChance: 0.52, relicChance: 0.80,
+    bareHandsChance: 0.09, kitChance: 0.52, relicChance: 0.80,
     winPts: 28, winCoins: 10, losePts: 15, loseCoins: 0, loseCredits: 0,
     noFlee: false, fleeCoins: 5, bareHandsDouble: false,
+    weakness: { type: 'badge', id: 'ifrit', name: 'Ifrit' },
+    curse: { id: 'cursed_powerups', desc: 'Next 3 power-ups forced to tier 1' },
+    deal: { label: 'Pay 10 coins to break hex', type: 'coins', cost: 10, pts: 0 },
   },
   {
     id: 'forest_troll', name: 'Forest Troll',
     description: 'A massive troll blocks the road. It will chase you if you run!',
     powerName: 'Stubborn', powerDesc: 'Fleeing costs 15 coins',
-    bareHandsChance: 0.28, kitChance: 0.55, relicChance: 0.78,
+    bareHandsChance: 0.13, kitChance: 0.55, relicChance: 0.78,
     winPts: 35, winCoins: 12, losePts: 22, loseCoins: 0, loseCredits: 0,
     noFlee: false, fleeCoins: 15, bareHandsDouble: false,
+    weakness: { type: 'relic', id: 'route_sign', name: 'Route 66 Sign' },
+    curse: null,
+    deal: null,
   },
   {
     id: 'stone_gargoyle', name: 'Stone Gargoyle',
     description: 'A living statue descends from a bridge, impervious to basic weapons!',
     powerName: 'Armored', powerDesc: "Hunter's Kit has no effect",
-    bareHandsChance: 0.25, kitChance: 0.25, relicChance: 0.72,
+    bareHandsChance: 0.10, kitChance: 0.25, relicChance: 0.72,
     winPts: 38, winCoins: 14, losePts: 25, loseCoins: 0, loseCredits: 0,
     noFlee: false, fleeCoins: 5, bareHandsDouble: false,
+    weakness: { type: 'badge', id: 'thunderbird', name: 'Thunderbird' },
+    curse: { id: 'stone_touch', desc: 'Every 5th Spot scores 0 pts' },
+    deal: null,
   },
   {
     id: 'sand_serpent', name: 'Sand Serpent',
     description: 'A massive serpent erupts from the road! Its venom drains your energy.',
     powerName: 'Venomous', powerDesc: 'Lose: also lose 15 credits',
-    bareHandsChance: 0.22, kitChance: 0.48, relicChance: 0.72,
+    bareHandsChance: 0.09, kitChance: 0.48, relicChance: 0.72,
     winPts: 45, winCoins: 16, losePts: 28, loseCoins: 0, loseCredits: 15,
     noFlee: false, fleeCoins: 5, bareHandsDouble: false,
+    weakness: { type: 'badge', id: 'griffin', name: 'Griffin' },
+    curse: { id: 'venom', desc: 'Each Spot costs +1 extra credit' },
+    deal: { label: 'Feed it — 20 credits', type: 'credits', cost: 20, pts: 0 },
   },
   {
     id: 'mountain_giant', name: 'Mountain Giant',
     description: 'A thundering giant shakes the earth! Bare-handed victory earns glory!',
     powerName: 'Brute Challenge', powerDesc: 'Win bare-handed: 2× pts',
-    bareHandsChance: 0.18, kitChance: 0.45, relicChance: 0.70,
+    bareHandsChance: 0.07, kitChance: 0.45, relicChance: 0.70,
     winPts: 55, winCoins: 20, losePts: 35, loseCoins: 0, loseCredits: 0,
     noFlee: false, fleeCoins: 5, bareHandsDouble: true,
+    weakness: { type: 'badge', id: 'centaur', name: 'Centaur' },
+    curse: null,
+    deal: null,
   },
   {
     id: 'frost_wraith', name: 'Frost Wraith',
     description: 'A spectral horror freezes the air. You feel rooted to the spot!',
     powerName: 'Frozen', powerDesc: 'Cannot flee',
-    bareHandsChance: 0.15, kitChance: 0.42, relicChance: 0.68,
+    bareHandsChance: 0.05, kitChance: 0.42, relicChance: 0.68,
     winPts: 60, winCoins: 22, losePts: 40, loseCoins: 0, loseCredits: 0,
     noFlee: true, fleeCoins: 0, bareHandsDouble: false,
+    weakness: { type: 'badge', id: 'phoenix', name: 'Phoenix' },
+    curse: { id: 'frozen_watch', desc: 'Watch ticks 25% slower' },
+    deal: null,
   },
   {
     id: 'shadow_drake', name: 'Shadow Drake',
     description: 'A drake made of pure shadow. Ancient magic dissolves in its presence!',
     powerName: 'Shadow Veil', powerDesc: 'Power Relic is less effective',
-    bareHandsChance: 0.12, kitChance: 0.40, relicChance: 0.55,
+    bareHandsChance: 0.04, kitChance: 0.40, relicChance: 0.55,
     winPts: 65, winCoins: 25, losePts: 45, loseCoins: 0, loseCredits: 0,
     noFlee: false, fleeCoins: 5, bareHandsDouble: false,
+    weakness: { type: 'badge', id: 'dragon', name: 'Dragon' },
+    curse: null,
+    deal: { label: 'Pay tribute — 8 coins', type: 'coins', cost: 8, pts: 10 },
   },
   {
     id: 'void_wraith', name: 'Void Wraith',
     description: 'A horror from the void phases in and out of reality.',
     powerName: 'Phase Shift', powerDesc: 'All win chances reduced by 10%',
-    bareHandsChance: 0.08, kitChance: 0.32, relicChance: 0.58,
+    bareHandsChance: 0.03, kitChance: 0.32, relicChance: 0.58,
     winPts: 80, winCoins: 35, losePts: 55, loseCoins: 0, loseCredits: 0,
     noFlee: false, fleeCoins: 5, bareHandsDouble: false,
+    weakness: { type: 'relic', id: 'compass', name: 'Broken Compass' },
+    curse: { id: 'void_phase', desc: 'Every 8th Spot scores 0 pts' },
+    deal: null,
   },
   {
     id: 'ancient_titan', name: 'Ancient Titan',
     description: 'An unstoppable force of nature. There is no escape. There is no mercy.',
     powerName: 'Colossus', powerDesc: 'Cannot flee. Maximum risk and reward.',
-    bareHandsChance: 0.05, kitChance: 0.28, relicChance: 0.52,
+    bareHandsChance: 0.02, kitChance: 0.28, relicChance: 0.52,
     winPts: 120, winCoins: 50, losePts: 80, loseCoins: 0, loseCredits: 0,
     noFlee: true, fleeCoins: 0, bareHandsDouble: false,
+    weakness: { type: 'relic', id: 'atlas', name: 'Road Atlas' },
+    curse: null,
+    deal: null,
   },
+];
+
+// ─── Relics ──────────────────────────────────────────────────────────────────
+
+export interface RelicDef {
+  id: string;
+  name: string;
+  emoji: string;
+  description: string;  // L0 passive
+  tier1Desc: string;    // L1 passive
+  tier2Desc: string;    // L2 passive
+  activateDesc: string; // one-time per-game active ability
+}
+
+export const RELICS: RelicDef[] = [
+  { id: 'rabbit_foot', name: "Rabbit's Foot",  emoji: '🐾',
+    description:   '20% chance each Spot gives +2 bonus pts',
+    tier1Desc:     '30% chance each Spot gives +3 bonus pts',
+    tier2Desc:     '30% chance each Spot gives +5 bonus pts',
+    activateDesc:  'Next 3 Spots each give +5 bonus pts' },
+  { id: 'thermos',     name: 'Coffee Thermos', emoji: '☕',
+    description:   'Watch ticks 15% faster',
+    tier1Desc:     'Watch ticks 25% faster',
+    tier2Desc:     'Watch ticks 25% faster; Watch commits also give +1 credit',
+    activateDesc:  'Watch interval halved for 20s' },
+  { id: 'route_sign',  name: 'Route 66 Sign',  emoji: '🛤️',
+    description:   '+1 pt on every Spot',
+    tier1Desc:     '+2 pts on every Spot',
+    tier2Desc:     '+2 pts/Spot; rival earns 10% fewer pts (stacks)',
+    activateDesc:  'Next 15 Spots each give +3 bonus pts' },
+  { id: 'atlas',       name: 'Road Atlas',      emoji: '🗺️',
+    description:   '+1 credit each time you earn a power-up',
+    tier1Desc:     '+2 credits each time you earn a power-up',
+    tier2Desc:     '+2 credits on power-up; 10% chance tier bumped up',
+    activateDesc:  'Next power-up earned is forced L3' },
+  { id: 'lucky_coin',  name: 'Lucky Coin',      emoji: '🪙',
+    description:   '10% chance each Spot costs 0 credits',
+    tier1Desc:     '15% chance each Spot costs 0 credits',
+    tier2Desc:     '15% free-spot chance; free Spots also give +1 bonus pt',
+    activateDesc:  'Next 3 Spots cost no credits' },
+  { id: 'trucker_die', name: "Trucker's Die",   emoji: '🎲',
+    description:   '+5 pts on every Watch commit',
+    tier1Desc:     '+8 pts on every Watch commit',
+    tier2Desc:     '+8 pts on every Watch commit; also +1 credit per commit',
+    activateDesc:  'Immediately +25 pts' },
+  { id: 'compass',     name: 'Broken Compass',  emoji: '🧭',
+    description:   'Rival earns 20% fewer pts per action',
+    tier1Desc:     'Rival earns 30% fewer pts per action',
+    tier2Desc:     'Rival earns 40% fewer pts per action',
+    activateDesc:  'Rival score drops by 25 pts immediately' },
+  { id: 'bottle_cap',  name: 'Bottle Cap',      emoji: '🔩',
+    description:   'Earn +1 extra coin per coin reward',
+    tier1Desc:     '+1 extra coin; coin threshold −5 pts',
+    tier2Desc:     'Earn +2 extra coins per coin reward',
+    activateDesc:  'Convert 10 credits → 5 coins immediately' },
+  { id: 'change_jar',  name: 'Change Jar',      emoji: '🫙',
+    description:   'Earn 5 coins when Patrol pulls you over',
+    tier1Desc:     'Earn 8 coins when Patrol pulls you over',
+    tier2Desc:     'Earn 8 coins on Patrol; also +5 pts on patrol stop',
+    activateDesc:  '+20 coins immediately' },
+];
+
+export const RELIC_UPGRADE_COSTS = [300, 600] as const;
+
+export const RELIC_SYNERGIES = [
+  { relics: ['thermos',    'trucker_die'] as [string,string], id: 'road_diner',   name: 'Road Diner',   desc: 'Watch commits also give +1 credit' },
+  { relics: ['compass',    'atlas']       as [string,string], id: 'navigator',    name: 'Navigator',    desc: 'First power-up each game is forced L2+' },
+  { relics: ['rabbit_foot','lucky_coin']  as [string,string], id: 'lucky_streak', name: 'Lucky Streak', desc: 'Free-spot chance raised to 30%' },
+  { relics: ['bottle_cap', 'change_jar']  as [string,string], id: 'loose_change', name: 'Loose Change', desc: 'Coin threshold capped at 20 pts' },
+  { relics: ['route_sign', 'compass']     as [string,string], id: 'road_warrior', name: 'Road Warrior', desc: 'Rival earns 30% fewer pts (total)' },
+];
+
+export const RELIC_SETS = [
+  { id: 'truckers_pride',  name: "Trucker's Pride",  relics: ['thermos', 'trucker_die', 'compass'],       desc: 'Watch commits +2 pts; rival earns 30% fewer pts' },
+  { id: 'wanderers_cache', name: "Wanderer's Cache", relics: ['rabbit_foot', 'route_sign', 'atlas'],       desc: 'Each power-up earned also gives +1 pt' },
+  { id: 'lucky_haul',      name: 'Lucky Haul',       relics: ['lucky_coin', 'bottle_cap', 'change_jar'],  desc: 'Coin threshold 1/20 pts; Patrol gives +10 coins' },
 ];
 
 // ─── Road Events ─────────────────────────────────────────────────────────────
@@ -302,9 +432,121 @@ export interface RoadEventDef {
 }
 
 export const ROAD_EVENTS: RoadEventDef[] = [
-  { id: 'traffic_jam', name: 'Traffic Jam',  desc: 'Watch tick paused for 45s — stuck in gridlock!',  duration: 45, color: '#cc4400' },
-  { id: 'speed_trap',  name: 'Speed Trap!',  desc: 'Patrol risk doubled for 60s — easy on the gas.',  duration: 60, color: '#dd0000' },
-  { id: 'open_road',   name: 'Open Road!',   desc: '+1 pt per spot for 30s — clear skies ahead!',     duration: 30, color: '#00aa44' },
-  { id: 'gas_station', name: 'Gas Station',  desc: 'Spend 10 credits for +25 pts, or drive past.',    duration: 0,  color: '#ccaa00' },
-  { id: 'shortcut',    name: 'Shortcut!',    desc: 'Spend 8 coins for +30 pts, or stay on the road.', duration: 0,  color: '#0099cc' },
+  { id: 'traffic_jam',    name: 'Traffic Jam',      desc: 'Watch tick paused for 45s — stuck in gridlock!',        duration: 45, color: '#cc4400' },
+  { id: 'speed_trap',     name: 'Speed Trap!',      desc: 'Patrol risk doubled for 60s — easy on the gas.',        duration: 60, color: '#dd0000' },
+  { id: 'open_road',      name: 'Open Road!',       desc: '+1 pt per spot for 30s — clear skies ahead!',           duration: 30, color: '#00aa44' },
+  { id: 'gas_station',    name: 'Gas Station',      desc: 'Spend 10 credits for +25 pts, or drive past.',          duration: 0,  color: '#ccaa00' },
+  { id: 'shortcut',       name: 'Shortcut!',        desc: 'Spend 8 coins for +30 pts, or stay on the road.',       duration: 0,  color: '#0099cc' },
+  { id: 'market',         name: 'Roadside Market',  desc: 'Trade 20 credits for 8 coins, or drive past.',          duration: 0,  color: '#aa8800' },
+  { id: 'mountain_pass',  name: 'Mountain Pass',    desc: 'Spend 5 coins for a guaranteed L3 power-up, or pass.',  duration: 0,  color: '#8844aa' },
+];
+
+// ─── Badge Synergies ──────────────────────────────────────────────────────────
+
+export const BADGE_SYNERGIES = [
+  { id: 'dragon_phoenix',     badges: ['dragon', 'phoenix']     as [string,string], name: 'Inferno',        desc: 'Streak milestone bonuses give 2× pts' },
+  { id: 'kraken_nessie',      badges: ['kraken', 'nessie']      as [string,string], name: 'Deep Waters',    desc: 'Watch commit also gives +3 credits' },
+  { id: 'kitsune_bigfoot',    badges: ['kitsune', 'bigfoot']    as [string,string], name: 'Forest Spirits', desc: 'Steal flashes always blocked' },
+  { id: 'unicorn_leprechaun', badges: ['unicorn', 'leprechaun'] as [string,string], name: 'Lucky Hoard',    desc: 'Coin rate: 1 per 15 pts' },
+  { id: 'sphinx_griffin',     badges: ['sphinx', 'griffin']     as [string,string], name: 'Noble Wings',    desc: 'Power-up activation gives +1 free credit' },
+  { id: 'thunderbird_ifrit',  badges: ['thunderbird', 'ifrit']  as [string,string], name: 'Storm & Flame',  desc: 'Thunderbird bonus applies in all weather' },
+];
+
+// ─── Badge Rivalries ─────────────────────────────────────────────────────────
+
+export const BADGE_RIVALRIES: [string, string][] = [
+  ['dragon',     'phoenix'],
+  ['kitsune',    'bigfoot'],
+  ['kraken',     'nessie'],
+  ['thunderbird','yeti'],
+  ['manticore',  'sphinx'],
+];
+
+// ─── Badge Trials ─────────────────────────────────────────────────────────────
+
+export const BADGE_TRIALS: Record<string, { desc: string; target: number; effectDesc: string; }> = {
+  dragon:     { desc: 'Exhaust Dragon\'s full 5-event flash shield in one game',    target: 5,   effectDesc: 'Flash events appear 20% less often' },
+  kitsune:    { desc: 'Block 8 steal attempts in one game with Kitsune active',     target: 8,   effectDesc: 'Blocked steal: 30% chance to gain a power-up' },
+  nessie:     { desc: 'Trigger Nessie\'s rare sighting event with Nessie active',   target: 1,   effectDesc: '+5 pts on every Watch commit' },
+  sphinx:     { desc: 'Activate 10 L2+ power-ups in one game',                      target: 10,  effectDesc: 'Power-up activation gives +3 extra pts' },
+  griffin:    { desc: 'Get 20 free spots from Griffin in one game',                  target: 20,  effectDesc: 'Extra 20% free credit chance' },
+  bigfoot:    { desc: 'Trigger 2 Bigfoot encounter events with Bigfoot active',      target: 2,   effectDesc: '5% chance of +5 bonus pts per Spot' },
+  valkyrie:   { desc: 'Win 5 boss fights with Valkyrie active',                     target: 5,   effectDesc: '+10 pts per boss win while active' },
+  thunderbird:{ desc: 'Score 300 pts from rainy-weather spots with Thunderbird active', target: 300, effectDesc: '+1 pt per Spot in any weather while active' },
+  unicorn:    { desc: 'Earn 30 coins from spot scoring with Unicorn active',         target: 30,  effectDesc: 'Coin threshold −3 while active' },
+  kraken:     { desc: 'Freeze the rival 3 times with Kraken active',                 target: 3,   effectDesc: '+1 credit per Watch commit while active' },
+  phoenix:    { desc: 'Earn 50 coins in one game with Phoenix active',               target: 50,  effectDesc: 'Coin floor +3 while active' },
+  yeti:       { desc: 'Commit Watch with 60+ pending credits once',                  target: 1,   effectDesc: '+4 credits per Watch commit while active' },
+  manticore:  { desc: 'Complete 3 flash challenges with Manticore active',           target: 3,   effectDesc: '+5 pts per flash challenge started while active' },
+  mermaid:    { desc: 'Earn 10 patience bonuses in one game with Mermaid active',    target: 10,  effectDesc: 'Patience bonus at 8+ pending credits while active' },
+  centaur:    { desc: 'Accumulate 250 Watch credits in one game with Centaur active', target: 250, effectDesc: '+2 credits per Watch commit while active' },
+  leprechaun: { desc: 'Earn 40 coins from spot scoring with Leprechaun active',      target: 40,  effectDesc: 'Shop coin discount +2 while active' },
+  wendigo:    { desc: 'Complete 3 bingo boards in one game with Wendigo active',     target: 3,   effectDesc: '+5 pts per bingo line while active' },
+  shuck:      { desc: 'Tap aggressively 30× without triggering patrol, Black Shuck active', target: 30, effectDesc: 'Patrol chance −10% extra while active' },
+  kirin:      { desc: 'Trigger Kirin multiplier 15 times in one game',              target: 15,  effectDesc: '+10 pts when Kirin multiplier fires' },
+  ifrit:      { desc: 'Convert 300 pending credits across commits with Ifrit active', target: 300, effectDesc: '+5% of pending added as bonus pts while active' },
+};
+
+export const BADGE_MASTERY_THRESHOLD = 10;
+
+// ─── Badge Prestige ───────────────────────────────────────────────────────────
+// Permanent cross-game passives unlocked by prestiging (mastered + trial done)
+
+export const BADGE_PRESTIGE_PASSIVES: Record<string, string> = {
+  dragon:      'Flash events 10% less frequent in all games',
+  kitsune:     '15% steal-block chance in all games',
+  nessie:      '+1 pt on every Watch commit in all games',
+  sphinx:      '+1 pt when activating any power-up in all games',
+  griffin:     '5% free-spot chance in all games',
+  bigfoot:     '2% chance of +3 bonus pts per Spot in all games',
+  valkyrie:    '+5 pts on every boss fight win',
+  thunderbird: '+1 pt per Spot in all weather',
+  unicorn:     'Coin threshold −3 in all games',
+  kraken:      'Rival grows 15% slower in all games',
+  phoenix:     'Coin floor stays at 3 in all games',
+  yeti:        'Credits decay 20% slower in all games',
+  manticore:   'Flash challenge windows 10% longer in all games',
+  mermaid:     'Patience bonus at 9+ pending credits in all games',
+  centaur:     'Watch ticks 150ms faster in all games',
+  leprechaun:  'All shop items −1 coin in all games',
+  wendigo:     '+5 pts per bingo line in all games',
+  shuck:       'Patrol chance −10% in all games',
+  kirin:       '+5 pts every 12th Spot in all games',
+  ifrit:       '+2% of pending credits as bonus pts on Watch commit',
+};
+
+// ─── Badge Challenges ─────────────────────────────────────────────────────────
+
+export type BadgeChallengeType = 'flash_block' | 'steal_block' | 'commit_big' | 'powerup_use' | 'boss_win' | 'pts_total' | 'spot_count';
+
+export interface BadgeChallengeDef {
+  badgeId: string;
+  desc: string;
+  type: BadgeChallengeType;
+  target: number;   // progress needed (for commit_big: 1 = once; threshold field sets min pending)
+  reward: number;   // coins on completion
+  threshold?: number; // for commit_big: minimum pending credits required
+}
+
+export const BADGE_CHALLENGES: BadgeChallengeDef[] = [
+  { badgeId: 'dragon',      desc: 'Block 3 flash events',                   type: 'flash_block', target: 3,   reward: 15 },
+  { badgeId: 'kitsune',     desc: 'Block 3 steal attempts',                 type: 'steal_block', target: 3,   reward: 20 },
+  { badgeId: 'nessie',      desc: 'Commit Watch with 30+ pending credits',  type: 'commit_big',  target: 1,   threshold: 30, reward: 15 },
+  { badgeId: 'sphinx',      desc: 'Activate 4 power-ups',                   type: 'powerup_use', target: 4,   reward: 15 },
+  { badgeId: 'griffin',     desc: 'Score 80 pts from spots',                type: 'pts_total',   target: 80,  reward: 12 },
+  { badgeId: 'bigfoot',     desc: 'Spot 25 times',                          type: 'spot_count',  target: 25,  reward: 18 },
+  { badgeId: 'valkyrie',    desc: 'Win a boss fight',                       type: 'boss_win',    target: 1,   reward: 20 },
+  { badgeId: 'thunderbird', desc: 'Score 50 pts from spots',                type: 'pts_total',   target: 50,  reward: 12 },
+  { badgeId: 'unicorn',     desc: 'Spot 20 times',                          type: 'spot_count',  target: 20,  reward: 10 },
+  { badgeId: 'kraken',      desc: 'Activate 3 power-ups',                   type: 'powerup_use', target: 3,   reward: 12 },
+  { badgeId: 'phoenix',     desc: 'Score 60 pts from spots',                type: 'pts_total',   target: 60,  reward: 12 },
+  { badgeId: 'yeti',        desc: 'Spot 30 times',                          type: 'spot_count',  target: 30,  reward: 15 },
+  { badgeId: 'manticore',   desc: 'Score 100 pts from spots',               type: 'pts_total',   target: 100, reward: 18 },
+  { badgeId: 'mermaid',     desc: 'Commit Watch with 20+ pending credits',  type: 'commit_big',  target: 1,   threshold: 20, reward: 12 },
+  { badgeId: 'centaur',     desc: 'Spot 35 times',                          type: 'spot_count',  target: 35,  reward: 15 },
+  { badgeId: 'leprechaun',  desc: 'Score 70 pts from spots',                type: 'pts_total',   target: 70,  reward: 12 },
+  { badgeId: 'wendigo',     desc: 'Activate 5 power-ups',                   type: 'powerup_use', target: 5,   reward: 15 },
+  { badgeId: 'shuck',       desc: 'Score 40 pts from spots',                type: 'pts_total',   target: 40,  reward: 10 },
+  { badgeId: 'kirin',       desc: 'Spot 40 times',                          type: 'spot_count',  target: 40,  reward: 18 },
+  { badgeId: 'ifrit',       desc: 'Activate 3 power-ups',                   type: 'powerup_use', target: 3,   reward: 12 },
 ];

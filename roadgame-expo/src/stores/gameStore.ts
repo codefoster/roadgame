@@ -1,6 +1,17 @@
 import { create } from 'zustand';
-import { Region, Weather, BINGO_STANDARD, BINGO_REGIONS } from '../constants/game';
+import { Region, Weather, BINGO_STANDARD, BINGO_REGIONS, BadgeChallengeType } from '../constants/game';
 import { pickRandom, randInt } from '../lib/gameLogic';
+
+export interface BadgeChallengeState {
+  badgeId: string;
+  desc: string;
+  type: BadgeChallengeType;
+  target: number;
+  progress: number;
+  reward: number;
+  completed: boolean;
+  threshold?: number;
+}
 
 export interface FlashChallenge {
   type: 'spot3' | 'watch_credits' | 'earn_l2';
@@ -23,6 +34,7 @@ export interface GameState {
 
   // Power-ups list (earned, not yet used)
   powerups: string[];
+  powerupsCrafted: boolean[]; // parallel array: true if this slot was crafted this game
 
   // Active effects
   doublePoints: boolean;
@@ -113,6 +125,30 @@ export interface GameState {
   // CB Radio
   cbNextSpotBonus: number;
   mpOpponentHasCbRadio: boolean;
+
+  // Relics
+  relics: string[];
+  pendingRelic: string | null;
+
+  // Boss curses
+  activeCurses: string[];
+  cursedPowerupsLeft: number;
+
+  // Badge trials (per-game progress)
+  trialProgress: Record<string, number>;
+  bigfootEventActive: boolean;
+
+  // Badge challenge (one per game)
+  badgeChallenge: BadgeChallengeState | null;
+
+  // Relic activation state (per-game)
+  relicActUsed: string[];
+  relicFreeSpots: number;
+  relicRouteBonusSpots: number;
+  relicRabbitBonusSpots: number;
+  relicForceL3: boolean;
+  relicNavFirst: boolean; // navigator synergy: first powerup forced L2+
+  relicWatchBoostExpiry: number;
 }
 
 type GameActions = {
@@ -136,6 +172,8 @@ type GameActions = {
   addPowerup: (code: string) => void;
   removePowerup: (code: string) => void;
   rerollTopPowerup: (region: Region) => void;
+  craftPowerup: (idx: number, newCode: string) => void;
+  fusePowerups: (tier: 1 | 2, newCode: string) => void;
   setEffect: (effect: Partial<Pick<GameState,
     'doublePoints' | 'doublePointsExpiry' | 'grassVisible' | 'grassOn' | 'grassExpiry' |
     'nextACKeepB' | 'nextAAllIn' | 'jackpotHold' |
@@ -170,6 +208,25 @@ type GameActions = {
   useSpareTire: () => void;
   setCbNextSpotBonus: (n: number) => void;
   setMpOpponentHasCbRadio: (v: boolean) => void;
+  addRelic: (id: string) => void;
+  removeRelic: (id: string) => void;
+  setPendingRelic: (id: string | null) => void;
+  addCurse: (id: string) => void;
+  setCursedPowerupsLeft: (n: number) => void;
+  updateTrialProgress: (badgeId: string, delta: number) => void;
+  setBigfootEventActive: (v: boolean) => void;
+
+  setBadgeChallenge: (c: BadgeChallengeState | null) => void;
+  updateBadgeChallengeProgress: (delta: number) => void;
+  completeBadgeChallenge: () => void;
+
+  activateRelic: (id: string) => void;
+  setRelicFreeSpots: (n: number) => void;
+  setRelicRouteBonusSpots: (n: number) => void;
+  setRelicRabbitBonusSpots: (n: number) => void;
+  setRelicForceL3: (v: boolean) => void;
+  setRelicNavFirst: (v: boolean) => void;
+  setRelicWatchBoostExpiry: (t: number) => void;
 };
 
 function makeBingoCard(region: Region): string[] {
@@ -198,7 +255,7 @@ export const useGameStore = create<GameState & GameActions>((set, get) => ({
   // ── initial state ──
   scoreA: 0, scoreB: 0, pendingB: 0, stackHoldCount: 0, spotStreak: 0,
   bWatching: false, toggleMode: 'tap',
-  powerups: [],
+  powerups: [], powerupsCrafted: [],
   doublePoints: false, doublePointsExpiry: 0,
   grassVisible: false, grassOn: false, grassExpiry: 0,
   nextACKeepB: false,
@@ -225,6 +282,12 @@ export const useGameStore = create<GameState & GameActions>((set, get) => ({
   roadEventId: null, roadEventExpiry: 0,
   headStart: false, creditBoost: false,
   cbNextSpotBonus: 0, mpOpponentHasCbRadio: false,
+  relics: [], pendingRelic: null,
+  activeCurses: [], cursedPowerupsLeft: 0,
+  trialProgress: {}, bigfootEventActive: false,
+  badgeChallenge: null,
+  relicActUsed: [], relicFreeSpots: 0, relicRouteBonusSpots: 0, relicRabbitBonusSpots: 0,
+  relicForceL3: false, relicNavFirst: true, relicWatchBoostExpiry: 0,
 
   // ── actions ──
   initGame: ({ weather, region, activeBadges, purchases }) => {
@@ -242,7 +305,7 @@ export const useGameStore = create<GameState & GameActions>((set, get) => ({
     set({
       scoreA, scoreB, pendingB: 0, stackHoldCount: 0,
       bWatching: false, toggleMode: 'tap',
-      powerups: [],
+      powerups: [], powerupsCrafted: [],
       doublePoints: false, doublePointsExpiry: 0,
       grassVisible: false, grassOn: false, grassExpiry: 0,
       nextACKeepB: false,
@@ -269,6 +332,12 @@ export const useGameStore = create<GameState & GameActions>((set, get) => ({
       headStart: purchases.includes('head_start'),
       creditBoost: purchases.includes('credit_boost'),
       cbNextSpotBonus: 0, mpOpponentHasCbRadio: false,
+      relics: [], pendingRelic: null,
+      activeCurses: [], cursedPowerupsLeft: 0,
+      trialProgress: {}, bigfootEventActive: false,
+      badgeChallenge: null,
+      relicActUsed: [], relicFreeSpots: 0, relicRouteBonusSpots: 0, relicRabbitBonusSpots: 0,
+      relicForceL3: false, relicNavFirst: true, relicWatchBoostExpiry: 0,
     });
   },
 
@@ -290,13 +359,18 @@ export const useGameStore = create<GameState & GameActions>((set, get) => ({
   setBWatching: (v) => set({ bWatching: v }),
   setToggleMode: (m) => set({ toggleMode: m }),
 
-  addPowerup: (code) => set((s) => ({ powerups: [...s.powerups, code] })),
+  addPowerup: (code) => set((s) => ({
+    powerups: [...s.powerups, code],
+    powerupsCrafted: [...s.powerupsCrafted, false],
+  })),
   removePowerup: (code) => set((s) => {
     const idx = s.powerups.indexOf(code);
     if (idx === -1) return {};
     const p = [...s.powerups];
+    const c = [...s.powerupsCrafted];
     p.splice(idx, 1);
-    return { powerups: p };
+    c.splice(idx, 1);
+    return { powerups: p, powerupsCrafted: c };
   }),
   rerollTopPowerup: (region) => set((s) => {
     if (s.powerups.length === 0) return {};
@@ -305,7 +379,28 @@ export const useGameStore = create<GameState & GameActions>((set, get) => ({
     const subs = ['a','b','c','d','e'];
     const newSub = pickRandom(subs);
     const newCode = `${tier}${newSub}`;
-    return { powerups: [newCode, ...s.powerups.slice(1)] };
+    const c = [...s.powerupsCrafted];
+    c[0] = false;
+    return { powerups: [newCode, ...s.powerups.slice(1)], powerupsCrafted: c };
+  }),
+  craftPowerup: (idx, newCode) => set((s) => {
+    if (idx < 0 || idx >= s.powerups.length) return {};
+    const p = [...s.powerups];
+    const c = [...s.powerupsCrafted];
+    p[idx] = newCode;
+    c[idx] = true;
+    return { powerups: p, powerupsCrafted: c };
+  }),
+  fusePowerups: (tier, newCode) => set((s) => {
+    const tierStr = String(tier);
+    const toRemove: number[] = [];
+    for (let i = 0; i < s.powerups.length && toRemove.length < 3; i++) {
+      if (s.powerups[i][0] === tierStr) toRemove.push(i);
+    }
+    if (toRemove.length < 3) return {};
+    const p = s.powerups.filter((_, i) => !toRemove.includes(i));
+    const c = s.powerupsCrafted.filter((_, i) => !toRemove.includes(i));
+    return { powerups: [...p, newCode], powerupsCrafted: [...c, false] };
   }),
 
   setEffect: (effect) => set(effect),
@@ -388,4 +483,31 @@ export const useGameStore = create<GameState & GameActions>((set, get) => ({
   useSpareTire: () => set({ spareTireUsed: true }),
   setCbNextSpotBonus: (n) => set({ cbNextSpotBonus: n }),
   setMpOpponentHasCbRadio: (v) => set({ mpOpponentHasCbRadio: v }),
+  addRelic: (id) => set((s) => ({ relics: s.relics.length < 3 ? [...s.relics, id] : s.relics })),
+  removeRelic: (id) => set((s) => ({ relics: s.relics.filter(r => r !== id) })),
+  setPendingRelic: (id) => set({ pendingRelic: id }),
+  addCurse: (id) => set((s) => ({ activeCurses: s.activeCurses.includes(id) ? s.activeCurses : [...s.activeCurses, id] })),
+  setCursedPowerupsLeft: (n) => set({ cursedPowerupsLeft: n }),
+  updateTrialProgress: (badgeId, delta) => set((s) => ({
+    trialProgress: { ...s.trialProgress, [badgeId]: (s.trialProgress[badgeId] ?? 0) + delta },
+  })),
+  setBigfootEventActive: (v) => set({ bigfootEventActive: v }),
+
+  setBadgeChallenge: (c) => set({ badgeChallenge: c }),
+  updateBadgeChallengeProgress: (delta) => set((s) => {
+    if (!s.badgeChallenge || s.badgeChallenge.completed) return {};
+    return { badgeChallenge: { ...s.badgeChallenge, progress: s.badgeChallenge.progress + delta } };
+  }),
+  completeBadgeChallenge: () => set((s) => {
+    if (!s.badgeChallenge) return {};
+    return { badgeChallenge: { ...s.badgeChallenge, completed: true, progress: s.badgeChallenge.target } };
+  }),
+
+  activateRelic: (id) => set((s) => ({ relicActUsed: s.relicActUsed.includes(id) ? s.relicActUsed : [...s.relicActUsed, id] })),
+  setRelicFreeSpots: (n) => set({ relicFreeSpots: n }),
+  setRelicRouteBonusSpots: (n) => set({ relicRouteBonusSpots: n }),
+  setRelicRabbitBonusSpots: (n) => set({ relicRabbitBonusSpots: n }),
+  setRelicForceL3: (v) => set({ relicForceL3: v }),
+  setRelicNavFirst: (v) => set({ relicNavFirst: v }),
+  setRelicWatchBoostExpiry: (t) => set({ relicWatchBoostExpiry: t }),
 }));

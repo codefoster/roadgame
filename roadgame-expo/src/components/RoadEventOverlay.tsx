@@ -5,13 +5,14 @@ import { useGameStore } from '../stores/gameStore';
 interface Props {
   onGasStation: (stop: boolean) => void;
   onShortcut: (take: boolean) => void;
+  onMarket: (trade: boolean) => void;
+  onMountainPass: (take: boolean) => void;
   coins: number;
+  credits: number;
 }
 
-export default function RoadEventOverlay({ onGasStation, onShortcut, coins }: Props) {
+export default function RoadEventOverlay({ onGasStation, onShortcut, onMarket, onMountainPass, coins, credits }: Props) {
   const { roadEventId } = useGameStore();
-
-  if (roadEventId !== 'gas_station' && roadEventId !== 'shortcut') return null;
 
   if (roadEventId === 'gas_station') {
     return (
@@ -33,27 +34,79 @@ export default function RoadEventOverlay({ onGasStation, onShortcut, coins }: Pr
     );
   }
 
-  const canAfford = coins >= 8;
-  return (
-    <Modal visible transparent animationType="fade">
-      <View style={styles.backdrop}>
-        <View style={styles.card}>
-          <Text style={styles.emoji}>🗺️</Text>
-          <Text style={styles.title}>Shortcut!</Text>
-          <Text style={styles.desc}>A faster route branches off ahead.</Text>
-          <TouchableOpacity
-            style={[styles.btn, styles.yesBtn, !canAfford && styles.disabled]}
-            onPress={() => canAfford && onShortcut(true)}
-          >
-            <Text style={styles.btnText}>Take it (−8 coins, +30 pts){!canAfford ? ' — need 8 coins' : ''}</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={[styles.btn, styles.noBtn]} onPress={() => onShortcut(false)}>
-            <Text style={styles.btnText}>Stay on Road</Text>
-          </TouchableOpacity>
+  if (roadEventId === 'shortcut') {
+    const canAfford = coins >= 8;
+    return (
+      <Modal visible transparent animationType="fade">
+        <View style={styles.backdrop}>
+          <View style={styles.card}>
+            <Text style={styles.emoji}>🗺️</Text>
+            <Text style={styles.title}>Shortcut!</Text>
+            <Text style={styles.desc}>A faster route branches off ahead.</Text>
+            <TouchableOpacity
+              style={[styles.btn, styles.yesBtn, !canAfford && styles.disabled]}
+              onPress={() => canAfford && onShortcut(true)}
+            >
+              <Text style={styles.btnText}>Take it (−8 coins, +30 pts){!canAfford ? ' — need 8 coins' : ''}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={[styles.btn, styles.noBtn]} onPress={() => onShortcut(false)}>
+              <Text style={styles.btnText}>Stay on Road</Text>
+            </TouchableOpacity>
+          </View>
         </View>
-      </View>
-    </Modal>
-  );
+      </Modal>
+    );
+  }
+
+  if (roadEventId === 'market') {
+    const canTrade = credits >= 20;
+    return (
+      <Modal visible transparent animationType="fade">
+        <View style={styles.backdrop}>
+          <View style={styles.card}>
+            <Text style={styles.emoji}>🏪</Text>
+            <Text style={styles.title}>Roadside Market</Text>
+            <Text style={styles.desc}>A vendor waves you down — trades credits for coins.</Text>
+            <TouchableOpacity
+              style={[styles.btn, styles.yesBtn, !canTrade && styles.disabled]}
+              onPress={() => canTrade && onMarket(true)}
+            >
+              <Text style={styles.btnText}>Trade (−20 credits, +8 coins){!canTrade ? ' — need 20 credits' : ''}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={[styles.btn, styles.noBtn]} onPress={() => onMarket(false)}>
+              <Text style={styles.btnText}>Drive Past</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+    );
+  }
+
+  if (roadEventId === 'mountain_pass') {
+    const canAfford = coins >= 5;
+    return (
+      <Modal visible transparent animationType="fade">
+        <View style={styles.backdrop}>
+          <View style={styles.card}>
+            <Text style={styles.emoji}>⛰️</Text>
+            <Text style={styles.title}>Mountain Pass</Text>
+            <Text style={styles.desc}>A high road with remarkable sightings — if you can navigate it.</Text>
+            <TouchableOpacity
+              style={[styles.btn, styles.yesBtn, !canAfford && styles.disabled]}
+              onPress={() => canAfford && onMountainPass(true)}
+            >
+              <Text style={styles.btnText}>Take the Pass (−5 coins, L3 power-up){!canAfford ? ' — need 5 coins' : ''}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={[styles.btn, styles.noBtn]} onPress={() => onMountainPass(false)}>
+              <Text style={styles.btnText}>Stay on Road</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+    );
+  }
+
+  return null;
 }
 
 const styles = StyleSheet.create({

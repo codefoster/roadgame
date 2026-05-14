@@ -1,10 +1,11 @@
 import React, { useState } from 'react';
 import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useRouter } from 'expo-router';
-import { REGIONS, WEATHER, Region, Weather } from '../src/constants/game';
+import { REGIONS, WEATHER, Region, Weather, BADGE_RIVALRIES } from '../src/constants/game';
 import { usePersistentStore } from '../src/stores/persistentStore';
 import ShopOverlay from '../src/components/ShopOverlay';
 import BadgesOverlay from '../src/components/BadgesOverlay';
+import RelicsOverlay from '../src/components/RelicsOverlay';
 
 export default function StartScreen() {
   const router = useRouter();
@@ -16,12 +17,15 @@ export default function StartScreen() {
   const [purchases, setPurchases] = useState<string[]>([]);
   const [shopVisible, setShopVisible] = useState(false);
   const [badgesVisible, setBadgesVisible] = useState(false);
+  const [relicsVisible, setRelicsVisible] = useState(false);
 
   function toggleBadge(id: string) {
     setActiveBadges(prev => {
       if (prev.includes(id)) return prev.filter(b => b !== id);
       if (prev.length >= 5) return prev;
       if ((badgeCooldowns[id] ?? 0) > 0) return prev;
+      const rival = BADGE_RIVALRIES.find(pair => pair.includes(id));
+      if (rival && prev.some(b => rival.includes(b) && b !== id)) return prev;
       return [...prev, id];
     });
   }
@@ -111,6 +115,9 @@ export default function StartScreen() {
           <Text style={[styles.btnText, badges.length === 0 && { opacity: 0.4 }]}>Badges</Text>
         </TouchableOpacity>
       </View>
+      <TouchableOpacity style={[styles.btn, styles.relicsBtn]} onPress={() => setRelicsVisible(true)}>
+        <Text style={styles.btnText}>Relics</Text>
+      </TouchableOpacity>
 
       <ShopOverlay
         visible={shopVisible}
@@ -124,6 +131,11 @@ export default function StartScreen() {
         onClose={() => setBadgesVisible(false)}
         activeBadges={activeBadges}
         onToggle={toggleBadge}
+      />
+
+      <RelicsOverlay
+        visible={relicsVisible}
+        onClose={() => setRelicsVisible(false)}
       />
     </ScrollView>
   );
@@ -163,6 +175,7 @@ const styles = StyleSheet.create({
   onlineBtn: { backgroundColor: '#1a1a4a' },
   shopBtn: { backgroundColor: '#4a3a00' },
   badgesBtn: { backgroundColor: '#3a004a' },
+  relicsBtn: { backgroundColor: '#1a3a3a' },
   btnText: { color: '#fff', fontWeight: 'bold', fontSize: 17 },
   row: { flexDirection: 'row' },
 });

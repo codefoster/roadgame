@@ -24,11 +24,14 @@ interface Props {
 
 export default function BingoCard({ visible, onClose, onBingo }: Props) {
   const { bingoCard, bingoMarked, markBingo, resetBingo, goldenTiles, activeBadges, addScoreA, nextBadgeId, setNextBadge } = useGameStore();
-  const { addCoins, earnBadge, badges, badgeLevels } = usePersistentStore();
+  const { addCoins, earnBadge, badges, badgeLevels, completedTrials, prestigedBadges } = usePersistentStore();
   const [prevLines, setPrevLines] = useState<number[]>([]);
 
   const wendigoLevel = badgeLevels['wendigo'] ?? 0;
-  const wendigoPts = activeBadges.includes('wendigo') ? ([20, 25, 30, 40][wendigoLevel] ?? 20) : 0;
+  const wendigoActive = activeBadges.includes('wendigo');
+  const wendigoPts = wendigoActive ? ([20, 25, 30, 40][wendigoLevel] ?? 20) : 0;
+  const wendigoTrialBonus = wendigoActive && completedTrials.includes('wendigo') ? 5 : 0;
+  const wendigoPrestigeBonus = prestigedBadges.includes('wendigo') ? 5 : 0;
 
   function handleMark(idx: number) {
     if (bingoMarked[idx]) return;
@@ -44,13 +47,14 @@ export default function BingoCard({ visible, onClose, onBingo }: Props) {
       BINGO_LINES[lineIdx].filter(cell => goldenTiles.includes(cell)).length
     ));
 
+    const wendigoBonus = wendigoPts + wendigoTrialBonus + wendigoPrestigeBonus;
     let coins = newLines.length * 5;
-    let pts = newLines.length * (5 + wendigoPts);
+    let pts = newLines.length * (5 + wendigoBonus);
     let label = 'BINGO!';
 
     if (maxGoldenInLine >= 2) {
       coins = newLines.length * 10;
-      pts = newLines.length * (10 + wendigoPts);
+      pts = newLines.length * (10 + wendigoBonus);
       label = 'DOUBLE GOLDEN BINGO!';
       const unowned = ALL_BADGES.filter(id => !badges.includes(id));
       if (unowned.length > 0) {
@@ -64,7 +68,7 @@ export default function BingoCard({ visible, onClose, onBingo }: Props) {
       }
     } else if (maxGoldenInLine === 1) {
       coins = newLines.length * 10;
-      pts = newLines.length * (10 + wendigoPts);
+      pts = newLines.length * (10 + wendigoBonus);
       label = 'GOLDEN BINGO!';
     }
 
@@ -103,7 +107,7 @@ export default function BingoCard({ visible, onClose, onBingo }: Props) {
             })}
           </View>
 
-          <TouchableOpacity style={styles.resetBtn} onPress={() => { resetBingo(); setPrevLines([]); }}>
+          <TouchableOpacity style={styles.resetBtn} onPress={() => { addScoreA(-30); resetBingo(); setPrevLines([]); }}>
             <Text style={styles.resetText}>Reset Card (−30 pts)</Text>
           </TouchableOpacity>
           <TouchableOpacity style={styles.closeBtn} onPress={onClose}>

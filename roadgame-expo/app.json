@@ -3,7 +3,7 @@
     "name": "roadgame-expo",
     "slug": "roadgame-expo",
     "version": "1.0.0",
-    "orientation": "portrait",
+    "orientation": "default",
     "icon": "./assets/images/icon.png",
     "scheme": "roadgameexpo",
     "userInterfaceStyle": "automatic",
