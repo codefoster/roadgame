@@ -478,7 +478,8 @@ export default function GameScreen() {
     if (store.bWatching && bTimerRef.current) {
       commitWatch();
       clearInterval(bTimerRef.current);
-      bTimerRef.current = setInterval(onBTick, 1000);
+      const iv = bInterval(store.scoreA, hasBadge(activeBadges, 'centaur'), badgeLevel(persist.badgeLevels, 'centaur'));
+      bTimerRef.current = setInterval(onBTick, store.hWatchDouble ? iv / 2 : iv);
     }
     if (store.nextACKeepB) store.setEffect({ nextACKeepB: false });
 
