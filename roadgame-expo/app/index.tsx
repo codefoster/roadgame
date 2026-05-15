@@ -6,6 +6,7 @@ import { usePersistentStore } from '../src/stores/persistentStore';
 import ShopOverlay from '../src/components/ShopOverlay';
 import BadgesOverlay from '../src/components/BadgesOverlay';
 import RelicsOverlay from '../src/components/RelicsOverlay';
+import CrewOverlay from '../src/components/CrewOverlay';
 
 export default function StartScreen() {
   const router = useRouter();
@@ -18,6 +19,8 @@ export default function StartScreen() {
   const [shopVisible, setShopVisible] = useState(false);
   const [badgesVisible, setBadgesVisible] = useState(false);
   const [relicsVisible, setRelicsVisible] = useState(false);
+  const [crewVisible, setCrewVisible] = useState(false);
+  const [equippedCrew, setEquippedCrew] = useState<string | null>(null);
 
   function toggleBadge(id: string) {
     setActiveBadges(prev => {
@@ -42,6 +45,7 @@ export default function StartScreen() {
         region,
         activeBadges: activeBadges.join(','),
         purchases: allPurchases.join(','),
+        crew: equippedCrew ?? '',
       },
     });
   }
@@ -93,6 +97,9 @@ export default function StartScreen() {
           Badges: {activeBadges.join(', ')}
         </Text>
       )}
+      {equippedCrew && (
+        <Text style={styles.crewSummary}>Crew: {equippedCrew}</Text>
+      )}
 
       {/* Main buttons */}
       <TouchableOpacity style={[styles.btn, styles.playBtn]} onPress={startGame}>
@@ -115,9 +122,14 @@ export default function StartScreen() {
           <Text style={[styles.btnText, badges.length === 0 && { opacity: 0.4 }]}>Badges</Text>
         </TouchableOpacity>
       </View>
-      <TouchableOpacity style={[styles.btn, styles.relicsBtn]} onPress={() => setRelicsVisible(true)}>
-        <Text style={styles.btnText}>Relics</Text>
-      </TouchableOpacity>
+      <View style={styles.row}>
+        <TouchableOpacity style={[styles.btn, styles.relicsBtn, { flex: 1, marginRight: 6 }]} onPress={() => setRelicsVisible(true)}>
+          <Text style={styles.btnText}>Relics</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={[styles.btn, styles.crewBtn, { flex: 1, marginLeft: 6 }]} onPress={() => setCrewVisible(true)}>
+          <Text style={styles.btnText}>Crew</Text>
+        </TouchableOpacity>
+      </View>
 
       <ShopOverlay
         visible={shopVisible}
@@ -136,6 +148,13 @@ export default function StartScreen() {
       <RelicsOverlay
         visible={relicsVisible}
         onClose={() => setRelicsVisible(false)}
+      />
+
+      <CrewOverlay
+        visible={crewVisible}
+        equippedCrew={equippedCrew}
+        onEquip={setEquippedCrew}
+        onClose={() => setCrewVisible(false)}
       />
     </ScrollView>
   );
@@ -166,7 +185,8 @@ const styles = StyleSheet.create({
   chipActive: { backgroundColor: '#4a9eff', borderColor: '#4a9eff' },
   chipText: { color: '#888', fontWeight: '600', fontSize: 13 },
   chipTextActive: { color: '#fff' },
-  badgeSummary: { color: '#ffd700', fontSize: 12, textAlign: 'center', marginBottom: 12 },
+  badgeSummary: { color: '#ffd700', fontSize: 12, textAlign: 'center', marginBottom: 4 },
+  crewSummary: { color: '#88ff88', fontSize: 12, textAlign: 'center', marginBottom: 12 },
   btn: {
     padding: 16, borderRadius: 10,
     alignItems: 'center', marginBottom: 12,
@@ -176,6 +196,7 @@ const styles = StyleSheet.create({
   shopBtn: { backgroundColor: '#4a3a00' },
   badgesBtn: { backgroundColor: '#3a004a' },
   relicsBtn: { backgroundColor: '#1a3a3a' },
+  crewBtn: { backgroundColor: '#1a3a1a' },
   btnText: { color: '#fff', fontWeight: 'bold', fontSize: 17 },
   row: { flexDirection: 'row' },
 });

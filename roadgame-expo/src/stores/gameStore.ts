@@ -138,6 +138,7 @@ export interface GameState {
   // Badge trials (per-game progress)
   trialProgress: Record<string, number>;
   bigfootEventActive: boolean;
+  crewActivated: boolean;
 
   // Badge challenge (one per game)
   badgeChallenge: BadgeChallengeState | null;
@@ -217,6 +218,8 @@ type GameActions = {
   setCursedPowerupsLeft: (n: number) => void;
   updateTrialProgress: (badgeId: string, delta: number) => void;
   setBigfootEventActive: (v: boolean) => void;
+  setCrewActivated: (v: boolean) => void;
+  addStreak: (n: number) => void;
 
   setBadgeChallenge: (c: BadgeChallengeState | null) => void;
   updateBadgeChallengeProgress: (delta: number) => void;
@@ -290,6 +293,7 @@ export const useGameStore = create<GameState & GameActions>((set, get) => ({
   badgeChallenge: null,
   relicActUsed: [], relicFreeSpots: 0, relicRouteBonusSpots: 0, relicRabbitBonusSpots: 0,
   relicForceL3: false, relicNavFirst: true, relicWatchBoostExpiry: 0,
+  crewActivated: false,
 
   // ── actions ──
   initGame: ({ weather, region, activeBadges, purchases }) => {
@@ -336,7 +340,7 @@ export const useGameStore = create<GameState & GameActions>((set, get) => ({
       cbNextSpotBonus: 0, mpOpponentHasCbRadio: false,
       relics: [], pendingRelic: null,
       activeCurses: [], cursedPowerupsLeft: 0,
-      trialProgress: {}, bigfootEventActive: false,
+      trialProgress: {}, bigfootEventActive: false, crewActivated: false,
       badgeChallenge: null,
       relicActUsed: [], relicFreeSpots: 0, relicRouteBonusSpots: 0, relicRabbitBonusSpots: 0,
       relicForceL3: false, relicNavFirst: true, relicWatchBoostExpiry: 0,
@@ -359,6 +363,8 @@ export const useGameStore = create<GameState & GameActions>((set, get) => ({
 
   incrementStreak: () => set((s) => ({ spotStreak: s.spotStreak + 1 })),
   resetStreak: () => set({ spotStreak: 0 }),
+  addStreak: (n) => set((s) => ({ spotStreak: s.spotStreak + n })),
+  setCrewActivated: (v) => set({ crewActivated: v }),
   setBWatching: (v) => set({ bWatching: v }),
   setToggleMode: (m) => set({ toggleMode: m }),
 

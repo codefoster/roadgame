@@ -4,7 +4,7 @@ import {
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 
-import { Region, Weather, TOURISTS, HITCHHIKERS, BOSSES, BADGES, ROAD_EVENTS, RELICS, POWERUPS, BADGE_SYNERGIES, BADGE_TRIALS, RELIC_SYNERGIES, RELIC_SETS, BADGE_CHALLENGES, BADGE_PRESTIGE_PASSIVES, BadgeChallengeType } from '../src/constants/game';
+import { Region, Weather, TOURISTS, HITCHHIKERS, BOSSES, BADGES, ROAD_EVENTS, RELICS, POWERUPS, BADGE_SYNERGIES, BADGE_TRIALS, RELIC_SYNERGIES, RELIC_SETS, BADGE_CHALLENGES, BADGE_PRESTIGE_PASSIVES, BadgeChallengeType, CREW_MEMBERS } from '../src/constants/game';
 import {
   bInterval, decayRate, decayThreshold,
   flashInterval, generatePowerup, spotPoints, watchTier,
@@ -51,6 +51,7 @@ export default function GameScreen() {
   const params = useLocalSearchParams<{
     weather: Weather; region: Region;
     activeBadges: string; purchases: string;
+    crew?: string;
     roomCode?: string; mpRole?: 'host' | 'guest';
   }>();
 
@@ -62,6 +63,7 @@ export default function GameScreen() {
   const region   = params.region   ?? 'forest';
   const activeBadges = params.activeBadges ? params.activeBadges.split(',').filter(Boolean) : [];
   const purchases    = params.purchases    ? params.purchases.split(',').filter(Boolean) : [];
+  const crew     = params.crew ?? '';
   const mpActive = !!params.roomCode;
   const mpRole   = params.mpRole ?? 'host';
 
@@ -237,6 +239,7 @@ export default function GameScreen() {
     }
     if (Date.now() < gs0.relicWatchBoostExpiry) actualInterval = Math.floor(actualInterval * 0.5);
     if (gs0.activeCurses.includes('frozen_watch')) actualInterval = Math.floor(actualInterval * 1.25);
+    if (crew === 'dj' && gs0.roadEventId && Date.now() < gs0.roadEventExpiry) actualInterval = Math.floor(actualInterval * 0.85);
     bTimerRef.current = setInterval(onBTick, actualInterval);
   }
 
@@ -291,7 +294,7 @@ export default function GameScreen() {
       // Compute effective tier
       const atlasBump = rl_atlas >= 2 && Math.random() < 0.10;
       let adjustedTier = atlasBump ? Math.min(3, tier + 1) as 1|2|3 : tier as 1|2|3;
-      const navSyn = hasRelicSynergy(relicsNow, 'navigator') && gs.relicNavFirst;
+      const navSyn = (hasRelicSynergy(relicsNow, 'navigator') || crew === 'navigator') && gs.relicNavFirst;
       if (navSyn) { adjustedTier = Math.max(2, adjustedTier) as 1|2|3; store.setRelicNavFirst(false); }
 
       const forcedTier = gs.cursedPowerupsLeft > 0 ? 1 : gs.relicForceL3 ? 3 : adjustedTier;
@@ -389,6 +392,9 @@ export default function GameScreen() {
     }
     // Centaur trial done: +2 credits per Watch commit
     if (hasBadge(activeBadges, 'centaur') && persist.completedTrials.includes('centaur')) store.addScoreB(2);
+
+    // Trucker crew passive: +2 credits per Watch commit
+    if (crew === 'trucker') store.addScoreB(2);
 
     // Ifrit trial: accumulate 150 pending credits across commits
     if (hasBadge(activeBadges, 'ifrit')) {
@@ -575,6 +581,11 @@ export default function GameScreen() {
     if (stoneCursed || voidCursed) doFlash('☠️ Curse blocked your score!', '#880000');
     store.addScoreA(effectivePoints);
 
+    // Scout crew passive: +1 pt when streak is 3+
+    if (crew === 'scout' && effectivePoints > 0 && useGameStore.getState().spotStreak >= 3) {
+      store.addScoreA(1);
+    }
+
     // Bigfoot prestige passive: 2% chance of +3 bonus pts
     if (persist.prestigedBadges.includes('bigfoot') && effectivePoints > 0 && Math.random() < 0.02) {
       store.addScoreA(3);
@@ -732,6 +743,7 @@ export default function GameScreen() {
       const available = RELICS.map(r => r.id).filter(id => !held.includes(id));
       if (available.length > 0) {
         const found = pickRandom(available);
+        persist.addOwnedRelic(found);
         if (held.length < 3) {
           store.addRelic(found);
           const r = RELICS.find(x => x.id === found)!;
@@ -1108,6 +1120,57 @@ export default function GameScreen() {
     }
   }
 
+  // ── Crew Activate ────────────────────────────────────────────────────────────
+
+  function activateCrew() {
+    if (store.crewActivated || !crew) return;
+    store.setCrewActivated(true);
+    if (crew === 'navigator') {
+      const held = useGameStore.getState().relics;
+      const available = RELICS.map(r => r.id).filter(id => !held.includes(id));
+      if (available.length > 0) {
+        const found = pickRandom(available);
+        persist.addOwnedRelic(found);
+        if (held.length < 3) {
+          store.addRelic(found);
+          const r = RELICS.find(x => x.id === found)!;
+          doFlash(`🗺️ Emily found ${r.emoji} ${r.name}!`, '#ffd700');
+        } else {
+          store.setPendingRelic(found);
+        }
+      } else {
+        doFlash('🗺️ No relics left to find!', '#888');
+      }
+    } else if (crew === 'mechanic') {
+      if (useGameStore.getState().patrolVisible) {
+        if (patrolBlockRef.current) { clearTimeout(patrolBlockRef.current); patrolBlockRef.current = null; }
+        store.setPatrolVisible(false);
+        if (patrolPausedWatch.current) {
+          patrolPausedWatch.current = false;
+          const interval = bInterval(store.scoreA, hasBadge(activeBadges, 'centaur'), badgeLevel(persist.badgeLevels, 'centaur'));
+          bTimerRef.current = setInterval(onBTick, store.hWatchDouble ? interval / 2 : interval);
+        }
+      }
+      doFlash('🔧 Dale cleared the stop!', '#ffaa44');
+    } else if (crew === 'scout') {
+      store.addStreak(5);
+      doFlash('🔭 Alex boosted your streak +5!', '#88ffaa');
+    } else if (crew === 'dj') {
+      const positiveEvents = ['open_road', 'shortcut', 'gas_station'];
+      const ev = ROAD_EVENTS.find(e => e.id === pickRandom(positiveEvents))!;
+      const expiry = ev.duration > 0 ? Date.now() + ev.duration * 1000 : 0;
+      store.setRoadEvent(ev.id, expiry);
+      setRoadEventBanner({ name: ev.name, desc: ev.desc, color: ev.color, duration: ev.duration });
+      setTimeout(() => setRoadEventBanner(null), 4000);
+      if (ev.duration > 0) setTimeout(() => store.setRoadEvent(null), ev.duration * 1000);
+      doFlash(`🎵 Trina tuned in: ${ev.name}!`, '#ff88ff');
+    } else if (crew === 'trucker') {
+      const pending = useGameStore.getState().pendingB;
+      if (pending > 0) store.addPendingB(pending);
+      doFlash(`🚛 Mac doubled pending credits!`, '#ffaa44');
+    }
+  }
+
   // ── Powerup Craft & Fuse ─────────────────────────────────────────────────────
 
   function handleCraft(idx: number) {
@@ -1281,7 +1344,7 @@ export default function GameScreen() {
             const interval = bInterval(store.scoreA, hasBadge(activeBadges, 'centaur'), badgeLevel(persist.badgeLevels, 'centaur'));
             bTimerRef.current = setInterval(onBTick, store.hWatchDouble ? interval / 2 : interval);
           }
-        }, 15000);
+        }, crew === 'mechanic' ? 8000 : 15000);
       }, patrolDelay);
     } else {
       // Shuck trial: tap aggressively 30× without triggering patrol, Black Shuck active
@@ -1507,7 +1570,8 @@ export default function GameScreen() {
     doublePoints, grassVisible, grassOn, infiniteCredits,
     patrolVisible, rivalScore, activeBadges: storeActiveBadges,
     flashChallenge, hGeologist, hTrucker, hDJ,
-    bossVisible, bossId, hHunter, nextBadgeId, rematchBossId } = store;
+    bossVisible, bossId, hHunter, nextBadgeId, rematchBossId, crewActivated } = store;
+  const crewMember = crew ? CREW_MEMBERS.find(c => c.id === crew) : null;
 
   const effectiveBadges = activeBadges;
 
@@ -1520,7 +1584,7 @@ export default function GameScreen() {
       {patrolVisible && (
         <View style={styles.patrolOverlay}>
           <Text style={styles.patrolText}>🚨 Highway Patrol 🚨</Text>
-          <Text style={styles.patrolSub}>Pulled over! Wait 15s…</Text>
+          <Text style={styles.patrolSub}>Pulled over! Wait {crew === 'mechanic' ? '8' : '15'}s…</Text>
         </View>
       )}
 
@@ -1589,6 +1653,18 @@ export default function GameScreen() {
         <Text style={styles.rematchWarning}>
           ⚔️ {BOSSES.find(b => b.id === rematchBossId)?.name ?? 'Boss'} is hunting you!
         </Text>
+      )}
+
+      {/* Crew member button */}
+      {crewMember && (
+        <TouchableOpacity
+          style={[styles.crewActivateBtn, crewActivated && styles.crewActivateBtnUsed]}
+          onPress={activateCrew}
+          disabled={crewActivated}
+        >
+          <Text style={styles.crewActivateName}>{crewMember.emoji} {crewMember.name}</Text>
+          <Text style={styles.crewActivateDesc}>{crewActivated ? 'Used' : 'Tap to activate'}</Text>
+        </TouchableOpacity>
       )}
 
       {/* Active effects bar */}
@@ -1885,6 +1961,10 @@ const styles = StyleSheet.create({
   scoreLabel: { color: '#666', fontSize: 10 },
   scoreValue: { color: '#fff', fontSize: 20, fontWeight: 'bold' },
   rematchWarning: { color: '#ff8800', fontSize: 12, textAlign: 'center', marginBottom: 4 },
+  crewActivateBtn: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#0a2a0a', borderRadius: 8, paddingHorizontal: 12, paddingVertical: 6, marginBottom: 6, borderWidth: 1, borderColor: '#4caf50' },
+  crewActivateBtnUsed: { borderColor: '#333', backgroundColor: '#111' },
+  crewActivateName: { color: '#88ff88', fontWeight: 'bold', fontSize: 13 },
+  crewActivateDesc: { color: '#4caf50', fontSize: 11 },
 
   effectsRow: { paddingHorizontal: 8, marginBottom: 6 },
   effectChip: {

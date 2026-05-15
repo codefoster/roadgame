@@ -1,6 +1,6 @@
 import React from 'react';
 import { Modal, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import { RELICS, RELIC_UPGRADE_COSTS, RELIC_SYNERGIES, RELIC_SETS } from '../constants/game';
+import { RELICS, RELIC_UPGRADE_COSTS, RELIC_SYNERGIES, RELIC_SETS, RELIC_CRAFT_COST } from '../constants/game';
 import { usePersistentStore } from '../stores/persistentStore';
 
 interface Props {
@@ -9,7 +9,7 @@ interface Props {
 }
 
 export default function RelicsOverlay({ visible, onClose }: Props) {
-  const { relicLevels, upgradeRelic, coins } = usePersistentStore();
+  const { relicLevels, upgradeRelic, coins, ownedRelics, craftRelic } = usePersistentStore();
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
@@ -50,6 +50,36 @@ export default function RelicsOverlay({ visible, onClose }: Props) {
                 </View>
               );
             })}
+
+            {/* Relic Crafting */}
+            {RELICS.some(r => (ownedRelics[r.id] ?? 0) >= 2 && (relicLevels[r.id] ?? 0) < 2) && (
+              <>
+                <Text style={styles.sectionHeader}>Relic Crafting</Text>
+                <Text style={styles.craftHint}>Combine 2 copies of a relic to level it up ({RELIC_CRAFT_COST} coins)</Text>
+                {RELICS.filter(r => (ownedRelics[r.id] ?? 0) >= 2 && (relicLevels[r.id] ?? 0) < 2).map(relic => {
+                  const owned = ownedRelics[relic.id] ?? 0;
+                  const level = relicLevels[relic.id] ?? 0;
+                  const canCraft = coins >= RELIC_CRAFT_COST;
+                  return (
+                    <View key={relic.id} style={styles.craftCard}>
+                      <View style={styles.relicHeader}>
+                        <Text style={styles.relicName}>{relic.emoji} {relic.name}</Text>
+                        <Text style={styles.ownedCount}>×{owned} owned · L{level}</Text>
+                      </View>
+                      <TouchableOpacity
+                        style={[styles.craftBtn, !canCraft && styles.btnDisabled]}
+                        onPress={() => craftRelic(relic.id)}
+                        disabled={!canCraft}
+                      >
+                        <Text style={styles.btnText}>
+                          Craft → L{level + 1} ({RELIC_CRAFT_COST} coins)
+                        </Text>
+                      </TouchableOpacity>
+                    </View>
+                  );
+                })}
+              </>
+            )}
 
             <Text style={styles.sectionHeader}>Relic Synergies</Text>
             {RELIC_SYNERGIES.map(syn => (
@@ -99,6 +129,10 @@ const styles = StyleSheet.create({
   btnDisabled: { opacity: 0.4 },
   btnText: { color: '#fff', fontWeight: '600', fontSize: 12 },
   maxed: { color: '#aa88ff', fontSize: 11, marginTop: 6, textAlign: 'right' },
+  craftCard: { backgroundColor: '#0a1a0a', borderRadius: 8, padding: 12, marginBottom: 8, borderWidth: 1, borderColor: '#2a4a2a' },
+  craftHint: { color: '#666', fontSize: 11, marginBottom: 8 },
+  craftBtn: { marginTop: 8, padding: 8, backgroundColor: '#1a3a1a', borderRadius: 6, alignItems: 'center' },
+  ownedCount: { color: '#88ff88', fontSize: 12 },
   synCard: { backgroundColor: '#001a2a', borderRadius: 6, padding: 8, marginBottom: 6, borderWidth: 1, borderColor: '#224' },
   setCard: { backgroundColor: '#1a1a00', borderRadius: 6, padding: 8, marginBottom: 6, borderWidth: 1, borderColor: '#442' },
   synName: { color: '#aaccff', fontWeight: 'bold', fontSize: 13 },

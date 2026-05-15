@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { BADGE_MASTERY_THRESHOLD, RELIC_UPGRADE_COSTS } from '../constants/game';
+import { BADGE_MASTERY_THRESHOLD, RELIC_UPGRADE_COSTS, RELIC_CRAFT_COST } from '../constants/game';
 
 interface PersistentState {
   coins: number;
@@ -15,6 +15,8 @@ interface PersistentState {
   completedTrials: string[];
   relicLevels: Record<string, number>;
   prestigedBadges: string[];
+  ownedRelics: Record<string, number>;
+  unlockedCrew: string[];
 
   addCoins: (n: number) => void;
   spendCoins: (n: number) => boolean;
@@ -27,6 +29,9 @@ interface PersistentState {
   upgradeBadge: (id: string) => boolean;
   upgradeRelic: (id: string) => boolean;
   prestigeBadge: (id: string) => void;
+  addOwnedRelic: (id: string) => void;
+  craftRelic: (id: string) => boolean;
+  unlockCrew: (id: string) => void;
   setBadgeCooldown: (id: string, games: number) => void;
   tickCooldowns: () => void;
 }
@@ -45,6 +50,8 @@ export const usePersistentStore = create<PersistentState>()(
       completedTrials: [],
       relicLevels: {},
       prestigedBadges: [],
+      ownedRelics: {},
+      unlockedCrew: [],
 
       addCoins: (n) => set((s) => ({ coins: s.coins + n })),
 
@@ -120,6 +127,27 @@ export const usePersistentStore = create<PersistentState>()(
         set((s) => ({ relicLevels: { ...s.relicLevels, [id]: currentLevel + 1 } }));
         return true;
       },
+
+      addOwnedRelic: (id) => set((s) => ({
+        ownedRelics: { ...s.ownedRelics, [id]: (s.ownedRelics[id] ?? 0) + 1 },
+      })),
+
+      craftRelic: (id) => {
+        const { ownedRelics, relicLevels, spendCoins } = get();
+        const owned = ownedRelics[id] ?? 0;
+        const level = relicLevels[id] ?? 0;
+        if (owned < 2 || level >= 2) return false;
+        if (!spendCoins(RELIC_CRAFT_COST)) return false;
+        set((s) => ({
+          ownedRelics: { ...s.ownedRelics, [id]: (s.ownedRelics[id] ?? 0) - 2 },
+          relicLevels: { ...s.relicLevels, [id]: level + 1 },
+        }));
+        return true;
+      },
+
+      unlockCrew: (id) => set((s) => ({
+        unlockedCrew: s.unlockedCrew.includes(id) ? s.unlockedCrew : [...s.unlockedCrew, id],
+      })),
     }),
     {
       name: 'roadgame-save',

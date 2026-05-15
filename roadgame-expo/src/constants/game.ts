@@ -421,6 +421,58 @@ export const RELIC_SETS = [
   { id: 'lucky_haul',      name: 'Lucky Haul',       relics: ['lucky_coin', 'bottle_cap', 'change_jar'],  desc: 'Coin threshold 1/20 pts; Patrol gives +10 coins' },
 ];
 
+// ─── Crew Members ────────────────────────────────────────────────────────────
+
+export const RELIC_CRAFT_COST = 100;
+
+export interface CrewMember {
+  id: string;
+  name: string;
+  emoji: string;
+  title: string;
+  passive: string;
+  activeDesc: string;
+  shopCost: number;
+}
+
+export const CREW_MEMBERS: CrewMember[] = [
+  {
+    id: 'navigator', name: 'Emily', emoji: '🗺️',
+    title: 'Navigator',
+    passive: 'First power-up each game is forced L2+',
+    activeDesc: 'Immediately find a free relic',
+    shopCost: 80,
+  },
+  {
+    id: 'mechanic', name: 'Dale', emoji: '🔧',
+    title: 'Mechanic',
+    passive: 'Patrol stops last 8s instead of 15s',
+    activeDesc: 'End the current patrol stop immediately',
+    shopCost: 100,
+  },
+  {
+    id: 'scout', name: 'Alex', emoji: '🔭',
+    title: 'Scout',
+    passive: '+1 pt per Spot when streak is 3+',
+    activeDesc: 'Add 5 to your current spot streak',
+    shopCost: 90,
+  },
+  {
+    id: 'dj', name: 'Trina', emoji: '🎵',
+    title: 'DJ',
+    passive: 'Watch ticks 15% faster while a road event is active',
+    activeDesc: 'Trigger a random positive road event immediately',
+    shopCost: 110,
+  },
+  {
+    id: 'trucker', name: 'Mac', emoji: '🚛',
+    title: 'Trucker',
+    passive: '+2 credits per Watch commit',
+    activeDesc: 'Double your current pending Watch credits',
+    shopCost: 120,
+  },
+];
+
 // ─── Road Events ─────────────────────────────────────────────────────────────
 
 export interface RoadEventDef {
