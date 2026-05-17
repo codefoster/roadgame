@@ -7,6 +7,8 @@ import ShopOverlay from '../src/components/ShopOverlay';
 import BadgesOverlay from '../src/components/BadgesOverlay';
 import RelicsOverlay from '../src/components/RelicsOverlay';
 import CrewOverlay from '../src/components/CrewOverlay';
+import DailyChallengesOverlay from '../src/components/DailyChallengesOverlay';
+import PrestigeOverlay from '../src/components/PrestigeOverlay';
 
 export default function StartScreen() {
   const router = useRouter();
@@ -21,6 +23,8 @@ export default function StartScreen() {
   const [relicsVisible, setRelicsVisible] = useState(false);
   const [crewVisible, setCrewVisible] = useState(false);
   const [equippedCrew, setEquippedCrew] = useState<string | null>(null);
+  const [dailyVisible, setDailyVisible] = useState(false);
+  const [prestigeVisible, setPrestigeVisible] = useState(false);
 
   function toggleBadge(id: string) {
     setActiveBadges(prev => {
@@ -130,6 +134,14 @@ export default function StartScreen() {
           <Text style={styles.btnText}>Crew</Text>
         </TouchableOpacity>
       </View>
+      <View style={styles.row}>
+        <TouchableOpacity style={[styles.btn, styles.dailyBtn, { flex: 1, marginRight: 6 }]} onPress={() => setDailyVisible(true)}>
+          <Text style={styles.btnText}>Daily</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={[styles.btn, styles.prestigeBtn, { flex: 1, marginLeft: 6 }]} onPress={() => setPrestigeVisible(true)}>
+          <Text style={styles.btnText}>Prestige</Text>
+        </TouchableOpacity>
+      </View>
 
       <ShopOverlay
         visible={shopVisible}
@@ -155,6 +167,16 @@ export default function StartScreen() {
         equippedCrew={equippedCrew}
         onEquip={setEquippedCrew}
         onClose={() => setCrewVisible(false)}
+      />
+
+      <DailyChallengesOverlay
+        visible={dailyVisible}
+        onClose={() => setDailyVisible(false)}
+      />
+
+      <PrestigeOverlay
+        visible={prestigeVisible}
+        onClose={() => setPrestigeVisible(false)}
       />
     </ScrollView>
   );
@@ -197,6 +219,8 @@ const styles = StyleSheet.create({
   badgesBtn: { backgroundColor: '#3a004a' },
   relicsBtn: { backgroundColor: '#1a3a3a' },
   crewBtn: { backgroundColor: '#1a3a1a' },
+  dailyBtn: { backgroundColor: '#003322' },
+  prestigeBtn: { backgroundColor: '#220044' },
   btnText: { color: '#fff', fontWeight: 'bold', fontSize: 17 },
   row: { flexDirection: 'row' },
 });

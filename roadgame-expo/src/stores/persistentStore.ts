@@ -18,6 +18,18 @@ interface PersistentState {
   ownedRelics: Record<string, number>;
   unlockedCrew: string[];
 
+  // Feature 7: Daily Challenges
+  dailyDate: string;
+  dailyCompleted: number[];
+
+  // Feature 10: Prestige
+  lifetimeScore: number;
+  prestigeMilestone: boolean;
+  prestigeStars: number;
+  prestigeLegend: boolean;
+  prestigeCoins: number;
+  prestigeShopItems: string[];
+
   addCoins: (n: number) => void;
   spendCoins: (n: number) => boolean;
   setCoinFloor: (n: number) => void;
@@ -34,6 +46,18 @@ interface PersistentState {
   unlockCrew: (id: string) => void;
   setBadgeCooldown: (id: string, games: number) => void;
   tickCooldowns: () => void;
+
+  // Feature 7: Daily Challenges actions
+  completeDailyChallenge: (idx: number) => void;
+  resetDailyIfNeeded: () => string;
+
+  // Feature 10: Prestige actions
+  addLifetimeScore: (n: number) => void;
+  addPrestigeStar: () => void;
+  setPrestigeLegend: () => void;
+  addPrestigeCoins: (n: number) => void;
+  spendPrestigeCoins: (n: number) => boolean;
+  buyPrestigeShopItem: (key: string) => void;
 }
 
 export const usePersistentStore = create<PersistentState>()(
@@ -52,6 +76,14 @@ export const usePersistentStore = create<PersistentState>()(
       prestigedBadges: [],
       ownedRelics: {},
       unlockedCrew: [],
+      dailyDate: '',
+      dailyCompleted: [],
+      lifetimeScore: 0,
+      prestigeMilestone: false,
+      prestigeStars: 0,
+      prestigeLegend: false,
+      prestigeCoins: 0,
+      prestigeShopItems: [],
 
       addCoins: (n) => set((s) => ({ coins: s.coins + n })),
 
@@ -147,6 +179,46 @@ export const usePersistentStore = create<PersistentState>()(
 
       unlockCrew: (id) => set((s) => ({
         unlockedCrew: s.unlockedCrew.includes(id) ? s.unlockedCrew : [...s.unlockedCrew, id],
+      })),
+
+      completeDailyChallenge: (idx) => set((s) => ({
+        dailyCompleted: s.dailyCompleted.includes(idx) ? s.dailyCompleted : [...s.dailyCompleted, idx],
+      })),
+
+      resetDailyIfNeeded: () => {
+        const today = new Date().toISOString().slice(0, 10);
+        const { dailyDate } = get();
+        if (dailyDate !== today) {
+          set({ dailyDate: today, dailyCompleted: [] });
+        }
+        return today;
+      },
+
+      addLifetimeScore: (n) => set((s) => {
+        const newTotal = s.lifetimeScore + n;
+        return {
+          lifetimeScore: newTotal,
+          prestigeMilestone: s.prestigeMilestone || newTotal >= 50000,
+        };
+      }),
+
+      addPrestigeStar: () => set((s) => ({
+        prestigeStars: s.prestigeStars < 5 ? s.prestigeStars + 1 : s.prestigeStars,
+      })),
+
+      setPrestigeLegend: () => set({ prestigeLegend: true }),
+
+      addPrestigeCoins: (n) => set((s) => ({ prestigeCoins: s.prestigeCoins + n })),
+
+      spendPrestigeCoins: (n) => {
+        const { prestigeCoins } = get();
+        if (prestigeCoins < n) return false;
+        set((s) => ({ prestigeCoins: s.prestigeCoins - n }));
+        return true;
+      },
+
+      buyPrestigeShopItem: (key) => set((s) => ({
+        prestigeShopItems: s.prestigeShopItems.includes(key) ? s.prestigeShopItems : [...s.prestigeShopItems, key],
       })),
     }),
     {

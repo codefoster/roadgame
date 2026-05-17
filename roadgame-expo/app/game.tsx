@@ -24,6 +24,8 @@ import BossFightOverlay from '../src/components/BossFightOverlay';
 import RoadEventBanner from '../src/components/RoadEventBanner';
 import RoadEventOverlay from '../src/components/RoadEventOverlay';
 import RelicSwapOverlay from '../src/components/RelicSwapOverlay';
+import TruckStopOverlay from '../src/components/TruckStopOverlay';
+import { getDailyChallenges } from '../src/lib/dailyChallenges';
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
 
@@ -44,6 +46,11 @@ function hasRelicSynergy(relics: string[], synId: string) {
 function hasRelicSet(relics: string[], setId: string) {
   const s = RELIC_SETS.find(s => s.id === setId);
   return s ? s.relics.every(r => relics.includes(r)) : false;
+}
+
+function applyPrestigeInterval(iv: number, prestigeStars: number): number {
+  if (prestigeStars >= 2) return Math.floor(iv * 0.9);
+  return iv;
 }
 
 export default function GameScreen() {
@@ -112,6 +119,16 @@ export default function GameScreen() {
         completed: false,
         threshold: def.threshold,
       });
+    }
+
+    // Prestige Star 1: +5 starting credits
+    if (persist.prestigeStars >= 1) {
+      store.addScoreB(5);
+    }
+    // Prestige Ace Driver: start with a random L2 power-up
+    if (persist.prestigeShopItems.includes('ace_driver')) {
+      const pu = generatePowerup(2, region, false, false);
+      store.addPowerup(pu);
     }
 
     // Phoenix: set coin floor for this game
@@ -226,9 +243,9 @@ export default function GameScreen() {
   function startWatch() {
     if (bTimerRef.current) return;
     store.setBWatching(true);
-    const interval = bInterval(
-      store.scoreA, hasBadge(activeBadges, 'centaur'),
-      badgeLevel(persist.badgeLevels, 'centaur')
+    const interval = applyPrestigeInterval(
+      bInterval(store.scoreA, hasBadge(activeBadges, 'centaur'), badgeLevel(persist.badgeLevels, 'centaur')),
+      persist.prestigeStars
     );
     let actualInterval = store.hWatchDouble ? interval / 2 : interval;
     if (persist.prestigedBadges.includes('centaur')) actualInterval = Math.max(200, actualInterval - 150);
@@ -577,9 +594,32 @@ export default function GameScreen() {
 
     const bigfootMult = liveState.bigfootEventActive ? 3 : 1;
     if (liveState.bigfootEventActive) { store.setBigfootEventActive(false); doFlash('👣 Bigfoot 3× Spot!', '#aaffaa'); }
-    const effectivePoints = (stoneCursed || voidCursed) ? 0 : (points * bigfootMult) + (openRoad ? 1 : 0) + routeBonus + rabbitBonus + luckyL2Bonus;
+    let effectivePoints = (stoneCursed || voidCursed) ? 0 : (points * bigfootMult) + (openRoad ? 1 : 0) + routeBonus + rabbitBonus + luckyL2Bonus;
     if (stoneCursed || voidCursed) doFlash('☠️ Curse blocked your score!', '#880000');
+
+    // Prestige bonuses on effective points
+    if (effectivePoints > 0) {
+      // Track 1 Milestone: +10% to all spot points (min +1)
+      if (persist.prestigeMilestone) effectivePoints += Math.max(1, Math.floor(effectivePoints * 0.1));
+      // Track 3 Legend: +1 pt per spot
+      if (persist.prestigeLegend) effectivePoints += 1;
+      // Scout's Eye: +1 pt per spot
+      if (persist.prestigeShopItems.includes('scouts_eye')) effectivePoints += 1;
+    }
+
     store.addScoreA(effectivePoints);
+
+    // Daily challenge: increment spots
+    store.incrementDailySpots();
+
+    // Truck Stop: check if threshold crossed (once per game)
+    {
+      const gs = useGameStore.getState();
+      if (!gs.truckStopUsed && gs.scoreA >= gs.truckStopThreshold) {
+        store.setTruckStopVisible(true);
+        store.setTruckStopUsed();
+      }
+    }
 
     // Scout crew passive: +1 pt when streak is 3+
     if (crew === 'scout' && effectivePoints > 0 && useGameStore.getState().spotStreak >= 3) {
@@ -824,7 +864,10 @@ export default function GameScreen() {
         // Restart watch interval at new (slower) rate if currently watching
         if (bTimerRef.current) {
           clearInterval(bTimerRef.current);
-          const newInterval = bInterval(newScore, hasBadge(activeBadges, 'centaur'), badgeLevel(persist.badgeLevels, 'centaur'));
+          const newInterval = applyPrestigeInterval(
+            bInterval(newScore, hasBadge(activeBadges, 'centaur'), badgeLevel(persist.badgeLevels, 'centaur')),
+            persist.prestigeStars
+          );
           const actual = useGameStore.getState().hWatchDouble ? newInterval / 2 : newInterval;
           bTimerRef.current = setInterval(onBTick, actual);
         }
@@ -843,6 +886,11 @@ export default function GameScreen() {
     if (hasBadge(activeBadges, 'dragon') && persist.completedTrials.includes('dragon')) {
       minMs = Math.floor(minMs * 1.2);
       maxMs = Math.floor(maxMs * 1.2);
+    }
+    // Prestige Star 4: flash events 20% less frequent
+    if (persist.prestigeStars >= 4) {
+      minMs = Math.floor(minMs * 1.25);
+      maxMs = Math.floor(maxMs * 1.25);
     }
     const delay = randInt(minMs, maxMs);
     flashTimerRef.current = setTimeout(doRandomFlash, delay);
@@ -976,15 +1024,24 @@ export default function GameScreen() {
 
   function startDecay() {
     decayTimerRef.current = setInterval(() => {
-      const score = store.scoreA;
+      const gs = useGameStore.getState();
+      // Rest Stop power: no decay while active
+      if (Date.now() < gs.restStopExpiry) return;
+      const score = gs.scoreA;
+      // Prestige Long Haul: decay only starts at 1500 pts
+      if (persist.prestigeShopItems.includes('long_haul') && score < 1500) return;
       let rate = decayRate(score, region);
       if (rate === 0) return;
       if (persist.prestigedBadges.includes('yeti')) rate = Math.max(1, Math.floor(rate * 0.8));
       const threshold = decayThreshold(score);
-      if (store.scoreB > threshold) {
+      if (gs.scoreB > threshold) {
         if (hasBadge(activeBadges, 'yeti')) return;
-        if (store.hTrucker) return;
+        if (gs.hTrucker) return;
         store.addScoreB(-rate);
+        // Prestige Iron Grip: credits can't drop below 5 via decay
+        if (persist.prestigeShopItems.includes('iron_grip') && useGameStore.getState().scoreB < 5) {
+          store.setScoreB(5);
+        }
       }
     }, 10000);
   }
@@ -1368,6 +1425,9 @@ export default function GameScreen() {
     const tier = parseInt(code[0]) as 1 | 2 | 3;
     const sub = code[1];
 
+    // Daily challenge tracking
+    store.incrementDailyPowerups();
+
     // Sphinx prestige passive: +1 pt on any power-up activation
     if (persist.prestigedBadges.includes('sphinx')) store.addScoreA(1);
 
@@ -1397,10 +1457,12 @@ export default function GameScreen() {
     // Badge challenge: powerup_use
     checkBadgeChallengeProgress('powerup_use', 1);
 
+    const durationMult = persist.prestigeStars >= 5 ? 1.25 : 1.0;
+
     switch (code) {
       case '1a':
       case '2a': {
-        const duration = code === '1a' ? 5000 : 10000;
+        const duration = Math.round((code === '1a' ? 5000 : 10000) * durationMult);
         const savedB = store.scoreB;
         store.setScoreB(999);
         store.setEffect({ infiniteCredits: true, infiniteExpiry: Date.now() + duration });
@@ -1414,7 +1476,7 @@ export default function GameScreen() {
       }
       case '1b':
       case '2b': {
-        const duration = code === '1b' ? 5000 : 10000;
+        const duration = Math.round((code === '1b' ? 5000 : 10000) * durationMult);
         store.setEffect({ doublePoints: true, doublePointsExpiry: Date.now() + duration });
         if (doubleRef.current) clearTimeout(doubleRef.current);
         doubleRef.current = setTimeout(() => store.setEffect({ doublePoints: false }), duration);
@@ -1426,9 +1488,10 @@ export default function GameScreen() {
       case '1e': store.setEffect({ nextACKeepB: true }); doFlash('Hold Boost ready!', '#aaaaff'); break;
       case '2c': store.setEffect({ jackpotHold: true }); doFlash('Jackpot Hold ready!', '#aa44ff'); break;
       case '2d': {
-        store.setEffect({ grassVisible: true, grassExpiry: Date.now() + 5000 });
+        const duration = Math.round(5000 * durationMult);
+        store.setEffect({ grassVisible: true, grassExpiry: Date.now() + duration });
         if (grassRef.current) clearTimeout(grassRef.current);
-        grassRef.current = setTimeout(() => store.setEffect({ grassVisible: false, grassOn: false }), 5000);
+        grassRef.current = setTimeout(() => store.setEffect({ grassVisible: false, grassOn: false }), duration);
         doFlash('Grass Vision!', '#44ff44');
         break;
       }
@@ -1517,6 +1580,8 @@ export default function GameScreen() {
     persist.addCoins(coins);
     store.addScoreA(pts);
     doFlash(label, '#ffd700');
+    // Daily challenge: bingo done
+    store.setDailyBingoDone(true);
     // Wendigo trial: complete 3 bingo boards in one game with Wendigo active
     if (hasBadge(activeBadges, 'wendigo')) {
       const prevW = useGameStore.getState().trialProgress['wendigo'] ?? 0;
@@ -1547,7 +1612,73 @@ export default function GameScreen() {
     persist.setCoinFloor(0);
     persist.tickCooldowns();
     if (purchases.includes('cb_radio')) persist.tickCbRadio();
+
+    // Feature 10: Prestige end-of-game
+    const finalScore = useGameStore.getState().scoreA;
+    persist.addLifetimeScore(finalScore);
+    if (finalScore >= 1500 && persist.prestigeStars < 5) persist.addPrestigeStar();
+    if (finalScore >= 700) persist.addPrestigeCoins(1);
+    if (persist.prestigeStars >= 3) persist.addCoins(3);
+    // Full Legend check: all 20 badges earned and all at level 3
+    if (!persist.prestigeLegend) {
+      const allBadgeIds = BADGES.map(b => b.id);
+      const allEarned = allBadgeIds.every(id => persist.badges.includes(id));
+      const allL3 = allBadgeIds.every(id => (persist.badgeLevels[id] ?? 0) >= 3);
+      if (allEarned && allL3) persist.setPrestigeLegend();
+    }
+
+    // Feature 7: Daily challenge completion check
+    const gs = useGameStore.getState();
+    const today = persist.resetDailyIfNeeded();
+    const challenges = getDailyChallenges(today);
+    challenges.forEach((ch, idx) => {
+      if (persist.dailyCompleted.includes(idx)) return;
+      let met = false;
+      switch (ch.type) {
+        case 'score':
+          met = finalScore >= ch.target;
+          break;
+        case 'spots':
+          met = gs.dailySpots >= ch.target;
+          break;
+        case 'powerups':
+          met = gs.dailyPowerups >= ch.target;
+          break;
+        case 'bingo':
+          met = gs.dailyBingoDone;
+          break;
+        case 'weather_score':
+          met = gs.dailyWeather === ch.weather && finalScore >= ch.target;
+          break;
+      }
+      if (met) {
+        persist.completeDailyChallenge(idx);
+        persist.addCoins(ch.reward);
+        doFlash(`Daily: ${ch.desc} +${ch.reward} coins!`, '#00cc66');
+      }
+    });
+
     router.replace('/');
+  }
+
+  // ── Truck Stop ────────────────────────────────────────────────────────────────
+
+  function onTruckStopFuelUp() {
+    store.addScoreB(30);
+    persist.spendCoins(10);
+    doFlash('Fuel Up! +30 credits', '#ff9900');
+  }
+
+  function onTruckStopScoreBoost() {
+    store.addScoreA(40);
+    persist.spendCoins(15);
+    doFlash('Score Boost! +40 pts', '#ff9900');
+  }
+
+  function onTruckStopRestStop() {
+    persist.spendCoins(8);
+    store.setRestStopExpiry(Date.now() + 90000);
+    doFlash('Rest Stop! No decay 90s', '#ff9900');
   }
 
   function onRelicSwap(swapOutId: string) {
@@ -1905,6 +2036,16 @@ export default function GameScreen() {
         newRelicId={store.pendingRelic ?? ''}
         onSwap={onRelicSwap}
         onKeep={onRelicKeep}
+      />
+
+      {/* Truck Stop overlay */}
+      <TruckStopOverlay
+        visible={store.truckStopVisible}
+        onClose={() => store.setTruckStopVisible(false)}
+        scoreA={store.scoreA}
+        onFuelUp={onTruckStopFuelUp}
+        onScoreBoost={onTruckStopScoreBoost}
+        onRestStop={onTruckStopRestStop}
       />
     </View>
   );

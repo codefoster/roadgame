@@ -140,6 +140,18 @@ export interface GameState {
   bigfootEventActive: boolean;
   crewActivated: boolean;
 
+  // Truck Stop
+  truckStopUsed: boolean;
+  truckStopThreshold: number;
+  truckStopVisible: boolean;
+  restStopExpiry: number;
+
+  // Daily challenge tracking (per-game)
+  dailySpots: number;
+  dailyPowerups: number;
+  dailyBingoDone: boolean;
+  dailyWeather: string;
+
   // Badge challenge (one per game)
   badgeChallenge: BadgeChallengeState | null;
 
@@ -225,6 +237,17 @@ type GameActions = {
   updateBadgeChallengeProgress: (delta: number) => void;
   completeBadgeChallenge: () => void;
 
+  // Truck Stop actions
+  setTruckStopVisible: (v: boolean) => void;
+  setTruckStopUsed: () => void;
+  setTruckStopThreshold: (n: number) => void;
+  setRestStopExpiry: (t: number) => void;
+
+  // Daily challenge actions
+  incrementDailySpots: () => void;
+  incrementDailyPowerups: () => void;
+  setDailyBingoDone: (v: boolean) => void;
+
   activateRelic: (id: string) => void;
   setRelicFreeSpots: (n: number) => void;
   setRelicRouteBonusSpots: (n: number) => void;
@@ -294,6 +317,8 @@ export const useGameStore = create<GameState & GameActions>((set, get) => ({
   relicActUsed: [], relicFreeSpots: 0, relicRouteBonusSpots: 0, relicRabbitBonusSpots: 0,
   relicForceL3: false, relicNavFirst: true, relicWatchBoostExpiry: 0,
   crewActivated: false,
+  truckStopUsed: false, truckStopThreshold: 500, truckStopVisible: false, restStopExpiry: 0,
+  dailySpots: 0, dailyPowerups: 0, dailyBingoDone: false, dailyWeather: '',
 
   // ── actions ──
   initGame: ({ weather, region, activeBadges, purchases }) => {
@@ -345,6 +370,11 @@ export const useGameStore = create<GameState & GameActions>((set, get) => ({
       relicActUsed: [], relicFreeSpots: 0, relicRouteBonusSpots: 0, relicRabbitBonusSpots: 0,
       relicForceL3: false, relicNavFirst: true, relicWatchBoostExpiry: 0,
       rematchBossId: null,
+      truckStopUsed: false,
+      truckStopThreshold: 400 + Math.floor(Math.random() * 201),
+      truckStopVisible: false,
+      restStopExpiry: 0,
+      dailySpots: 0, dailyPowerups: 0, dailyBingoDone: false, dailyWeather: weather,
     });
   },
 
@@ -512,6 +542,14 @@ export const useGameStore = create<GameState & GameActions>((set, get) => ({
     if (!s.badgeChallenge) return {};
     return { badgeChallenge: { ...s.badgeChallenge, completed: true, progress: s.badgeChallenge.target } };
   }),
+
+  setTruckStopVisible: (v) => set({ truckStopVisible: v }),
+  setTruckStopUsed: () => set({ truckStopUsed: true }),
+  setTruckStopThreshold: (n) => set({ truckStopThreshold: n }),
+  setRestStopExpiry: (t) => set({ restStopExpiry: t }),
+  incrementDailySpots: () => set((s) => ({ dailySpots: s.dailySpots + 1 })),
+  incrementDailyPowerups: () => set((s) => ({ dailyPowerups: s.dailyPowerups + 1 })),
+  setDailyBingoDone: (v) => set({ dailyBingoDone: v }),
 
   activateRelic: (id) => set((s) => ({ relicActUsed: s.relicActUsed.includes(id) ? s.relicActUsed : [...s.relicActUsed, id] })),
   setRelicFreeSpots: (n) => set({ relicFreeSpots: n }),
